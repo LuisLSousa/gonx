@@ -1,5 +1,7 @@
 # gonx
 
+[![CI](https://github.com/LuisLSousa/gonx/actions/workflows/ci.yml/badge.svg)](https://github.com/LuisLSousa/gonx/actions/workflows/ci.yml)
+
 A performance-oriented graph library for Go, in the spirit of Python's
 [networkx](https://networkx.org/) but built around dense integer node IDs and a
 compact, cache-friendly representation.
@@ -91,11 +93,14 @@ g := b.Build()
 
 ## Design
 
-- **Dense integer nodes.** IDs are `0..N-1`. No generic node types in the core —
-  that would reintroduce a map indirection and defeat CSR's locality. A labeled
-  wrapper can sit on top if needed.
+- **Dense integer nodes.** IDs are `0..N-1` (up to 2³¹−1 nodes and adjacency
+  entries — enforced, not silently overflowed). No generic node types in the
+  core — that would reintroduce a map indirection and defeat CSR's locality. A
+  labeled wrapper can sit on top if needed.
 - **Immutable `Graph` (CSR).** Neighbors of `u` live in a contiguous, sorted slice
-  returned zero-copy by `Neighbors(u)`. `HasEdge` is O(log deg) via binary search.
+  returned zero-copy by `Neighbors(u)`; `NeighborsSeq(u)` wraps the same data as
+  an `iter.Seq[int]` for callers who prefer plain ints. `HasEdge` is O(log deg)
+  via binary search.
 - **Mutable `Builder`.** Add/remove nodes and edges, then `Build()` to freeze.
   The result is always simple (no self-loops or duplicate edges).
 - **Reproducible randomness.** Every randomized operation takes an explicit

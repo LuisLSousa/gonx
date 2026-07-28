@@ -16,23 +16,29 @@ import (
 func Transitivity(g *gonx.Graph) float64 {
 	n := g.NumNodes()
 	w := pool.Workers(n)
-	triangles := make([]int64, w) // per-worker accumulators avoid false sharing
+	triangles := make([]int64, w) // one slot per worker, written once per chunk
 	triads := make([]int64, w)
 
-	pool.ParallelFor(n, w, func(u, worker int) {
-		nbrs := g.Neighbors(u)
-		d := len(nbrs)
-		triads[worker] += int64(d) * int64(d-1) / 2
-		// Count edges among u's neighbors. Each such edge closes a triangle at u;
-		// summed over all u this counts every triangle exactly 3 times, which the
-		// factor of 3 in the transitivity formula cancels against the triple count.
-		for i := 0; i < d; i++ {
-			for j := i + 1; j < d; j++ {
-				if g.HasEdge(int(nbrs[i]), int(nbrs[j])) {
-					triangles[worker]++
+	pool.ParallelChunks(n, w, func(worker, start, end int) {
+		var tri, tpl int64 // accumulate locally; publishing per-item would false-share
+		for u := start; u < end; u++ {
+			nbrs := g.Neighbors(u)
+			d := len(nbrs)
+			tpl += int64(d) * int64(d-1) / 2
+			// Count edges among u's neighbors. Each such edge closes a triangle at
+			// u; summed over all u this counts every triangle exactly 3 times, which
+			// the factor of 3 in the transitivity formula cancels against the triple
+			// count.
+			for i := 0; i < d; i++ {
+				for j := i + 1; j < d; j++ {
+					if g.HasEdge(int(nbrs[i]), int(nbrs[j])) {
+						tri++
+					}
 				}
 			}
 		}
+		triangles[worker] = tri
+		triads[worker] = tpl
 	})
 
 	var tri, tpl int64
@@ -59,21 +65,25 @@ func AverageClustering(g *gonx.Graph) float64 {
 	}
 	w := pool.Workers(n)
 	sums := make([]float64, w)
-	pool.ParallelFor(n, w, func(u, worker int) {
-		nbrs := g.Neighbors(u)
-		d := len(nbrs)
-		if d < 2 {
-			return
-		}
-		links := 0
-		for i := 0; i < d; i++ {
-			for j := i + 1; j < d; j++ {
-				if g.HasEdge(int(nbrs[i]), int(nbrs[j])) {
-					links++
+	pool.ParallelChunks(n, w, func(worker, start, end int) {
+		var sum float64
+		for u := start; u < end; u++ {
+			nbrs := g.Neighbors(u)
+			d := len(nbrs)
+			if d < 2 {
+				continue
+			}
+			links := 0
+			for i := 0; i < d; i++ {
+				for j := i + 1; j < d; j++ {
+					if g.HasEdge(int(nbrs[i]), int(nbrs[j])) {
+						links++
+					}
 				}
 			}
+			sum += 2 * float64(links) / (float64(d) * float64(d-1))
 		}
-		sums[worker] += 2 * float64(links) / (float64(d) * float64(d-1))
+		sums[worker] = sum
 	})
 	var total float64
 	for _, s := range sums {

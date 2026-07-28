@@ -67,9 +67,9 @@ func ShuffleWithPerm(g *gonx.Graph, r *rand.Rand) (*gonx.Graph, []int) {
 // returned int is the number of swaps actually performed.
 //
 // The operation works on a copy; g is left unchanged. This mirrors
-// networkx.double_edge_swap and is the basis for the "randomized neighborhoods"
-// layer in the simulation, which needs a graph with the same degree sequence as
-// the interaction layer but reshuffled neighbors.
+// networkx.double_edge_swap and is the standard way to build degree-preserving
+// null models: graphs with the same degree sequence as the original but
+// otherwise randomized wiring.
 func DoubleEdgeSwap(g *gonx.Graph, nswap, maxTries int, r *rand.Rand) (*gonx.Graph, int, error) {
 	if nswap < 0 {
 		return nil, 0, fmt.Errorf("%w: nswap must be >= 0, got %d", gonx.ErrInvalidParam, nswap)

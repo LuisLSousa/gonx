@@ -20,7 +20,7 @@ func Complete(n int) (*gonx.Graph, error) {
 	b := gonx.NewBuilder(n)
 	for u := 0; u < n; u++ {
 		for v := u + 1; v < n; v++ {
-			b.AddEdge(u, v)
+			b.AddEdgeUnchecked(u, v) // each pair enumerated exactly once
 		}
 	}
 	return b.Build(), nil
@@ -45,10 +45,12 @@ func WattsStrogatz(n, k int, p float64, r *rand.Rand) (*gonx.Graph, error) {
 	}
 	b := gonx.NewBuilder(n)
 	// Ring lattice: connect each node to the k/2 nearest nodes on each side.
+	// Each ring edge {u, u+j} is produced exactly once: j ranges over 1..k/2,
+	// and k < n keeps j below n/2, so no pair repeats under the mod-n wrap.
 	half := k / 2
 	for u := 0; u < n; u++ {
 		for j := 1; j <= half; j++ {
-			b.AddEdge(u, (u+j)%n)
+			b.AddEdgeUnchecked(u, (u+j)%n)
 		}
 	}
 	if p == 0 || n <= k+1 {
@@ -134,9 +136,9 @@ func sampleDistinct(pool []int32, m int, r *rand.Rand) []int32 {
 }
 
 // RandomAvgDegree adds uniformly random edges until the average degree reaches at
-// least avgDegree. It mirrors the ad-hoc random graph used by the original
-// thesis code (its MultiplexNetwork), which targets a mean degree rather than a
-// fixed edge probability.
+// least avgDegree. Unlike [ErdosRenyi] it targets a mean degree directly rather
+// than an edge probability, which is convenient when generating graphs of equal
+// density across different sizes.
 func RandomAvgDegree(n int, avgDegree float64, r *rand.Rand) (*gonx.Graph, error) {
 	if n < 0 {
 		return nil, fmt.Errorf("%w: n must be >= 0, got %d", gonx.ErrInvalidParam, n)
@@ -174,7 +176,7 @@ func ErdosRenyi(n int, p float64, r *rand.Rand) (*gonx.Graph, error) {
 	for u := 0; u < n; u++ {
 		for v := u + 1; v < n; v++ {
 			if r.Float64() < p {
-				b.AddEdge(u, v)
+				b.AddEdgeUnchecked(u, v) // each pair enumerated exactly once
 			}
 		}
 	}

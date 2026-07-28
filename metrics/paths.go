@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"errors"
-	"math"
 
 	"github.com/LuisLSousa/gonx"
 	"github.com/LuisLSousa/gonx/internal/pool"
@@ -126,23 +125,23 @@ func allPairsSum(g *gonx.Graph) (sum, reachablePairs int64) {
 	w := pool.Workers(n)
 	sums := make([]int64, w)
 	counts := make([]int64, w)
-	// Each worker owns reusable BFS scratch to keep allocation at O(workers * n)
-	// rather than O(n^2).
-	dists := make([][]int32, w)
-	queues := make([][]int32, w)
-	for i := 0; i < w; i++ {
-		dists[i] = make([]int32, n)
-		queues[i] = make([]int32, 0, n)
-	}
-	pool.ParallelFor(n, w, func(src, worker int) {
-		dist := dists[worker]
-		bfsDistances(g, src, dist, queues[worker])
-		for _, d := range dist {
-			if d > 0 {
-				sums[worker] += int64(d)
-				counts[worker]++
+	pool.ParallelChunks(n, w, func(worker, start, end int) {
+		// Per-worker reusable BFS scratch keeps allocation at O(workers * n)
+		// rather than O(n^2).
+		dist := make([]int32, n)
+		queue := make([]int32, 0, n)
+		var s, c int64
+		for src := start; src < end; src++ {
+			bfsDistances(g, src, dist, queue)
+			for _, d := range dist {
+				if d > 0 {
+					s += int64(d)
+					c++
+				}
 			}
 		}
+		sums[worker] = s
+		counts[worker] = c
 	})
 	for i := 0; i < w; i++ {
 		sum += sums[i]
@@ -164,29 +163,25 @@ func Diameter(g *gonx.Graph) (int, error) {
 	}
 	w := pool.Workers(n)
 	maxes := make([]int32, w)
-	dists := make([][]int32, w)
-	queues := make([][]int32, w)
-	for i := 0; i < w; i++ {
-		dists[i] = make([]int32, n)
-		queues[i] = make([]int32, 0, n)
-	}
-	pool.ParallelFor(n, w, func(src, worker int) {
-		dist := dists[worker]
-		bfsDistances(g, src, dist, queues[worker])
-		for _, d := range dist {
-			if d > maxes[worker] {
-				maxes[worker] = d
+	pool.ParallelChunks(n, w, func(worker, start, end int) {
+		dist := make([]int32, n)
+		queue := make([]int32, 0, n)
+		var maxDist int32
+		for src := start; src < end; src++ {
+			bfsDistances(g, src, dist, queue)
+			for _, d := range dist {
+				if d > maxDist {
+					maxDist = d
+				}
 			}
 		}
+		maxes[worker] = maxDist
 	})
 	var m int32
 	for _, x := range maxes {
 		if x > m {
 			m = x
 		}
-	}
-	if m == math.MaxInt32 {
-		return 0, ErrDisconnectedGraph
 	}
 	return int(m), nil
 }

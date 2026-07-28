@@ -53,7 +53,9 @@ func Ramp(t float64, stops ...string) string {
 }
 
 func hexRGB(s string) (r, g, b int) {
-	fmt.Sscanf(strings.TrimPrefix(s, "#"), "%02x%02x%02x", &r, &g, &b)
+	if _, err := fmt.Sscanf(strings.TrimPrefix(s, "#"), "%02x%02x%02x", &r, &g, &b); err != nil {
+		return 0, 0, 0
+	}
 	return
 }
 
