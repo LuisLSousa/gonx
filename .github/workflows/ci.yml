@@ -13,10 +13,11 @@ jobs:
         # Oldest supported (must match go.mod) and latest stable.
         go: ["1.23", "stable"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
+          cache: false # zero deps, no go.sum to key a cache on
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - name: vet
