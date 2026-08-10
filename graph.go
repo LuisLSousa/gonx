@@ -6,11 +6,14 @@
 // edges, and [Builder.Build] freezes it into an immutable [Graph] stored in
 // Compressed Sparse Row (CSR) form. The CSR layout gives zero-copy, O(1)
 // neighbor iteration, which is the dominant access pattern for the simulations
-// and graph metrics this library targets.
+// and graph metrics this library targets. [Digraph] and [DigraphBuilder] are the
+// directed counterparts; a Digraph stores both edge directions in CSR form, so
+// out-neighbors and in-neighbors are equally cheap to walk.
 //
-// Node IDs are dense integers in the range [0, N). Graphs are undirected and
-// unweighted. All randomized operations take an explicit *math/rand/v2.Rand so
-// results are fully reproducible; the package never touches a global RNG.
+// Node IDs are dense integers in the range [0, N). Graphs are unweighted and
+// always simple (no self-loops or duplicate edges). All randomized operations
+// take an explicit *math/rand/v2.Rand so results are fully reproducible; the
+// package never touches a global RNG.
 package gonx
 
 import (
@@ -25,8 +28,8 @@ import (
 // Sentinel errors returned by constructors and algorithms. Wrap-friendly: callers
 // may test with errors.Is.
 var (
-	// ErrInvalidParam indicates a generator or transform was given parameters
-	// that cannot produce a valid graph (e.g. odd degree for Watts-Strogatz).
+	// ErrInvalidParam indicates a generator, transform, or metric was given
+	// parameters it cannot work with (e.g. odd degree for Watts-Strogatz).
 	ErrInvalidParam = errors.New("gonx: invalid parameter")
 	// ErrNotPermutation indicates a relabeling slice is not a permutation of [0, N).
 	ErrNotPermutation = errors.New("gonx: not a permutation of node ids")
@@ -90,7 +93,7 @@ func (b *Builder) AddNode() int {
 
 // HasEdge reports whether the undirected edge {u, v} exists. O(deg(u)).
 func (b *Builder) HasEdge(u, v int) bool {
-	if u < 0 || u >= len(b.adj) {
+	if u < 0 || u >= len(b.adj) || v < 0 || v >= len(b.adj) {
 		return false
 	}
 	vv := int32(v)
@@ -203,7 +206,8 @@ func (b *Builder) Build() *Graph {
 
 // Graph is an immutable, undirected, unweighted graph stored in Compressed Sparse
 // Row form. The neighbors of node u occupy data[offsets[u]:offsets[u+1]] and are
-// sorted ascending. A Graph is safe for concurrent reads.
+// sorted ascending. A Graph is safe for concurrent reads. The zero value is not
+// a valid Graph; obtain one from [Builder.Build].
 //
 // Accessors that take a node ID (Degree, Neighbors, NeighborsSeq, RandomNeighbor)
 // panic with a descriptive message when the ID is outside [0, N); HasEdge is the
@@ -243,14 +247,7 @@ func (g *Graph) Neighbors(u int) []int32 {
 // end-to-end; hot paths should prefer Neighbors, which exposes the backing slice
 // with no per-element call overhead. It panics if u is out of range.
 func (g *Graph) NeighborsSeq(u int) iter.Seq[int] {
-	nbrs := g.Neighbors(u)
-	return func(yield func(int) bool) {
-		for _, v := range nbrs {
-			if !yield(int(v)) {
-				return
-			}
-		}
-	}
+	return intSeq(g.Neighbors(u))
 }
 
 // HasEdge reports whether the undirected edge {u, v} exists. It uses binary

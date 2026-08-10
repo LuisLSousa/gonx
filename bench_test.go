@@ -60,3 +60,30 @@ func BenchmarkTransitivity_1000(b *testing.B) {
 		_ = metrics.Transitivity(g)
 	}
 }
+
+// BenchmarkDigraphBuild measures freezing a directed builder into the dual-CSR
+// Digraph, the directed counterpart of Builder.Build.
+func BenchmarkDigraphBuild_10000(b *testing.B) {
+	r := gonx.NewRand(1)
+	db := gonx.NewDigraphBuilder(10_000)
+	for db.NumEdges() < 50_000 {
+		db.AddEdge(r.IntN(10_000), r.IntN(10_000))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = db.Build()
+	}
+}
+
+func BenchmarkPageRank_10000(b *testing.B) {
+	r := gonx.NewRand(1)
+	db := gonx.NewDigraphBuilder(10_000)
+	for db.NumEdges() < 50_000 {
+		db.AddEdge(r.IntN(10_000), r.IntN(10_000))
+	}
+	g := db.Build()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = metrics.PageRank(g, 0.85, 1e-6, 100)
+	}
+}

@@ -103,6 +103,11 @@ g := b.Build()
   via binary search.
 - **Mutable `Builder`.** Add/remove nodes and edges, then `Build()` to freeze.
   The result is always simple (no self-loops or duplicate edges).
+- **Directed graphs.** `Digraph`/`DigraphBuilder` mirror the undirected pair, with
+  the CSR stored in *both* directions: `OutNeighbors(u)` and `InNeighbors(u)` are
+  equally cheap, which is what reverse-flow algorithms like PageRank and "who
+  links here" queries need. Built for mapping dependency graphs at ecosystem
+  scale (millions of nodes).
 - **Reproducible randomness.** Every randomized operation takes an explicit
   `*math/rand/v2.Rand`. Same seed + parameters ⇒ byte-identical graph. The package
   never touches a global RNG.
@@ -115,10 +120,10 @@ g := b.Build()
 
 | Package | Contents |
 |---|---|
-| `gonx` | `Graph` (CSR), `Builder`, iterators, `NewRand` |
+| `gonx` | `Graph`/`Digraph` (CSR), `Builder`/`DigraphBuilder`, iterators, `NewRand` |
 | `gonx/generators` | `WattsStrogatz`, `BarabasiAlbert`, `Complete`, `RandomAvgDegree`, `ErdosRenyi` |
 | `gonx/transform` | `DoubleEdgeSwap`, `RelabelNodes`, `Shuffle`, `Copy` |
-| `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS` |
+| `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS`, `PageRank`, `WeaklyConnectedComponents` |
 
 > Note on `BarabasiAlbert(n, m, r)`: `m` is the number of edges added per new node
 > (matching networkx), **not** the average degree — the resulting average degree
@@ -126,9 +131,11 @@ g := b.Build()
 
 ## Status
 
-v1 focuses on undirected, unweighted graphs. Directed/weighted graphs, generic
-node labels, serialization, and advanced algorithms (centralities, community
-detection) are intentionally out of scope for now.
+v1 focused on undirected, unweighted graphs; v1.1 adds directed graphs
+(`Digraph`), `PageRank`, and `WeaklyConnectedComponents`, extracted from real
+usage mapping large dependency graphs. Weighted graphs, generic node labels,
+serialization, and further algorithms (strongly connected components, more
+centralities, community detection) remain intentionally out of scope for now.
 
 ## Testing
 

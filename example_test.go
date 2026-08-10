@@ -49,3 +49,37 @@ func ExampleGraph_NeighborsSeq() {
 	// 1
 	// 2
 }
+
+func ExampleDigraph() {
+	// A tiny citation graph: later papers cite earlier ones. Direction
+	// matters, and a Digraph keeps both adjacency directions, so asking
+	// "whom does 3 cite?" and "who cites 0?" are equally cheap.
+	b := gonx.NewDigraphBuilder(4)
+	b.AddEdge(1, 0)
+	b.AddEdge(2, 0)
+	b.AddEdge(3, 0)
+	b.AddEdge(3, 2)
+	g := b.Build()
+
+	fmt.Println(g.OutNeighbors(3)) // what 3 cites
+	fmt.Println(g.InNeighbors(0))  // who cites 0
+	fmt.Println(g.HasEdge(3, 2), g.HasEdge(2, 3))
+	// Output:
+	// [0 2]
+	// [1 2 3]
+	// true false
+}
+
+func ExampleDigraph_OutNeighborsSeq() {
+	b := gonx.NewDigraphBuilder(4)
+	b.AddEdge(0, 3)
+	b.AddEdge(0, 1)
+	sum := 0
+	g := b.Build()
+	for v := range g.OutNeighborsSeq(0) {
+		sum += v
+	}
+	fmt.Println(sum)
+	// Output:
+	// 4
+}

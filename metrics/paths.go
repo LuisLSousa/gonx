@@ -34,6 +34,9 @@ func IsConnected(g *gonx.Graph) bool {
 // ascending order of their smallest member.
 func ConnectedComponents(g *gonx.Graph) [][]int {
 	n := g.NumNodes()
+	if n <= 0 {
+		return nil
+	}
 	comp := make([]int, n)
 	for i := range comp {
 		comp[i] = -1

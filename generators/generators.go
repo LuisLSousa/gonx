@@ -40,7 +40,7 @@ func WattsStrogatz(n, k int, p float64, r *rand.Rand) (*gonx.Graph, error) {
 	if k >= n {
 		return nil, fmt.Errorf("%w: k (%d) must be < n (%d)", gonx.ErrInvalidParam, k, n)
 	}
-	if p < 0 || p > 1 {
+	if !(p >= 0 && p <= 1) { // negated so NaN is rejected too
 		return nil, fmt.Errorf("%w: p must be in [0,1], got %g", gonx.ErrInvalidParam, p)
 	}
 	b := gonx.NewBuilder(n)
@@ -143,7 +143,7 @@ func RandomAvgDegree(n int, avgDegree float64, r *rand.Rand) (*gonx.Graph, error
 	if n < 0 {
 		return nil, fmt.Errorf("%w: n must be >= 0, got %d", gonx.ErrInvalidParam, n)
 	}
-	if avgDegree < 0 {
+	if !(avgDegree >= 0) { // negated so NaN is rejected too
 		return nil, fmt.Errorf("%w: avgDegree must be >= 0, got %g", gonx.ErrInvalidParam, avgDegree)
 	}
 	b := gonx.NewBuilder(n)
@@ -169,7 +169,7 @@ func ErdosRenyi(n int, p float64, r *rand.Rand) (*gonx.Graph, error) {
 	if n < 0 {
 		return nil, fmt.Errorf("%w: n must be >= 0, got %d", gonx.ErrInvalidParam, n)
 	}
-	if p < 0 || p > 1 {
+	if !(p >= 0 && p <= 1) { // negated so NaN is rejected too
 		return nil, fmt.Errorf("%w: p must be in [0,1], got %g", gonx.ErrInvalidParam, p)
 	}
 	b := gonx.NewBuilder(n)
