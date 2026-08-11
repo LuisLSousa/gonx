@@ -1,0 +1,8 @@
+# Regenerable benchmark artifacts — run.sh recreates all of these.
+# data/ holds the seeded edge lists (byte-identical from the seed, the
+# 1M-node one alone is ~65 MB); results/ stays committable as the
+# receipts backing the README numbers.
+data/
+bin/
+.venv/
+__pycache__/

@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="432" viewBox="0 0 680 432" font-family="-apple-system, 'Segoe UI', Roboto, sans-serif">
+<rect width="680" height="432" fill="#fcfcfb"/>
+<text x="24" y="30" font-size="15" font-weight="600" fill="#1e293b">Four graph operations, one million nodes</text>
+<text x="24" y="49" font-size="11" fill="#475569">Barabasi-Albert n=1M, m=5 (5.0M directed edges) · medians of 3 runs · log time scale, lower is better</text>
+<circle cx="29" cy="68" r="5" fill="#2a78d6"/>
+<text x="39" y="72" font-size="11" fill="#475569">gonx</text>
+<circle cx="102" cy="68" r="5" fill="#eb6834"/>
+<text x="112" y="72" font-size="11" fill="#475569">networkx</text>
+<circle cx="207" cy="68" r="5" fill="#1baf7a"/>
+<text x="217" y="72" font-size="11" fill="#475569">igraph</text>
+<circle cx="296" cy="68" r="5" fill="#eda100"/>
+<text x="306" y="72" font-size="11" fill="#475569">gonum</text>
+<line x1="150.0" y1="78" x2="150.0" y2="268" stroke="#e2e8f0"/>
+<text x="150.0" y="284" font-size="10" fill="#94a3b8" text-anchor="middle">10 ms</text>
+<line x1="313.3" y1="78" x2="313.3" y2="268" stroke="#e2e8f0"/>
+<text x="313.3" y="284" font-size="10" fill="#94a3b8" text-anchor="middle">100 ms</text>
+<line x1="476.7" y1="78" x2="476.7" y2="268" stroke="#e2e8f0"/>
+<text x="476.7" y="284" font-size="10" fill="#94a3b8" text-anchor="middle">1.0 s</text>
+<line x1="640.0" y1="78" x2="640.0" y2="268" stroke="#e2e8f0"/>
+<text x="640.0" y="284" font-size="10" fill="#94a3b8" text-anchor="middle">10 s</text>
+<text x="138" y="110" font-size="11" fill="#475569" text-anchor="end">build (5.0M edges)</text>
+<line x1="150" y1="106" x2="640" y2="106" stroke="#e2e8f0" stroke-dasharray="2,3"/>
+<circle cx="296.7" cy="106" r="6" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="286.7" y="96" font-size="10" fill="#475569" text-anchor="start">79 ms</text>
+<circle cx="398.4" cy="106" r="6" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="559.1" cy="106" r="6" fill="#eda100" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="624.6" cy="106" r="6" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="624.6" y="96" font-size="10" fill="#475569" text-anchor="end">8.1 s</text>
+<text x="138" y="154" font-size="11" fill="#475569" text-anchor="end">PageRank</text>
+<line x1="150" y1="150" x2="640" y2="150" stroke="#e2e8f0" stroke-dasharray="2,3"/>
+<circle cx="252.8" cy="150" r="6" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="242.8" y="140" font-size="10" fill="#475569" text-anchor="start">43 ms</text>
+<circle cx="355.7" cy="150" r="6" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="552.3" cy="150" r="6" fill="#eda100" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="568.6" cy="150" r="6" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="568.6" y="140" font-size="10" fill="#475569" text-anchor="end">3.7 s</text>
+<text x="138" y="198" font-size="11" fill="#475569" text-anchor="end">weak components</text>
+<line x1="150" y1="194" x2="640" y2="194" stroke="#e2e8f0" stroke-dasharray="2,3"/>
+<circle cx="217.4" cy="194" r="6" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<text x="207.4" y="184" font-size="10" fill="#475569" text-anchor="start">26 ms</text>
+<circle cx="322.1" cy="194" r="6" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="534.3" cy="194" r="6" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="591.7" cy="194" r="6" fill="#eda100" stroke="#fcfcfb" stroke-width="2"/>
+<text x="591.7" y="184" font-size="10" fill="#475569" text-anchor="end">5.1 s</text>
+<text x="138" y="242" font-size="11" fill="#475569" text-anchor="end">BFS reachability</text>
+<line x1="150" y1="238" x2="640" y2="238" stroke="#e2e8f0" stroke-dasharray="2,3"/>
+<circle cx="246.9" cy="238" r="6" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="236.9" y="228" font-size="10" fill="#475569" text-anchor="start">39 ms</text>
+<circle cx="339.9" cy="238" r="6" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="531.0" cy="238" r="6" fill="#eda100" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="536.4" cy="247" r="6" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="536.4" y="228" font-size="10" fill="#475569" text-anchor="end">2.3 s</text>
+<text x="24" y="310" font-size="12" font-weight="600" fill="#1e293b">Peak memory, same workload</text>
+<line x1="150.0" y1="324" x2="150.0" y2="356" stroke="#e2e8f0"/>
+<text x="150.0" y="372" font-size="10" fill="#94a3b8" text-anchor="middle">100 MB</text>
+<line x1="395.0" y1="324" x2="395.0" y2="356" stroke="#e2e8f0"/>
+<text x="395.0" y="372" font-size="10" fill="#94a3b8" text-anchor="middle">1.0 GB</text>
+<line x1="640.0" y1="324" x2="640.0" y2="356" stroke="#e2e8f0"/>
+<text x="640.0" y="372" font-size="10" fill="#94a3b8" text-anchor="middle">9.8 GB</text>
+<text x="138" y="350" font-size="11" fill="#475569" text-anchor="end">peak RSS</text>
+<circle cx="261.9" cy="346" r="6" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="251.9" y="336" font-size="10" fill="#475569" text-anchor="start">286 MB</text>
+<circle cx="515.7" cy="346" r="6" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="515.7" y="336" font-size="10" fill="#475569" text-anchor="end">3.0 GB</text>
+<circle cx="447.6" cy="346" r="6" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="502.5" cy="346" r="6" fill="#eda100" stroke="#fcfcfb" stroke-width="2"/>
+<text x="24" y="420" font-size="9.5" fill="#94a3b8">Whole-process RSS via /usr/bin/time -l (interpreter and runtime included) · protocol and caveats: bench/README.md</text>
+</svg>

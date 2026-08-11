@@ -129,6 +129,31 @@ g := b.Build()
 > (matching networkx), **not** the average degree — the resulting average degree
 > is approximately `2m`.
 
+## Benchmarks
+
+Measured against networkx, python-igraph, and gonum/graph on identical
+seeded inputs, with cross-library answer checks; the full harness,
+protocol, and caveats live in [`bench/`](bench/) and every number below
+reproduces with `cd bench && ./run.sh`.
+
+![Benchmark receipts](docs/images/benchmarks.svg)
+
+Medians of 3 runs on a Barabási–Albert graph with 1M nodes / 5.0M
+directed edges (Apple M3 Max; ratio vs gonx in parentheses):
+
+| operation | gonx | networkx | igraph | gonum |
+|---|---|---|---|---|
+| build | **79 ms** | 8.1 s (102×) | 332 ms (4.2×) | 3.2 s (40×) |
+| PageRank | **43 ms** | 3.7 s (86×) | 182 ms (4.3×) | 2.9 s (68×) |
+| weak components | 113 ms | 2.3 s (20×) | **26 ms (0.2×)** | 5.1 s (45×) |
+| BFS reachability | **39 ms** | 2.3 s (59×) | 145 ms (3.7×) | 2.1 s (55×) |
+| peak memory | **286 MB** | 3.0 GB | 1.6 GB | 2.7 GB |
+
+igraph's C core wins weak components outright — worth knowing if that
+is your bottleneck. And networkx trades speed for an enormous algorithm
+catalog and pure-Python hackability; the comparison here is about what
+a compiled CSR core buys, not about which library to love.
+
 ## Status
 
 v1 focused on undirected, unweighted graphs; v1.1 adds directed graphs

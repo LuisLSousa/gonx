@@ -1,0 +1,12 @@
+#check,gonx,n=10000,edges=49975,pr_top=9984,pr_top_score=0.000728842,wcc=1,bfs_src=6,bfs_reached=9994
+#check,gonum,n=10000,edges=49975,pr_top=9984,pr_top_score=0.000728797,wcc=1,bfs_src=6,bfs_reached=9994
+#check,networkx,n=10000,edges=49975,pr_top=9984,pr_top_score=0.000728842,wcc=1,bfs_src=6,bfs_reached=9994
+#check,igraph,n=10000,edges=49975,pr_top=9984,pr_top_score=0.000728842,wcc=1,bfs_src=6,bfs_reached=9994
+#check,gonx,n=100000,edges=499975,pr_top=98314,pr_top_score=0.000092982,wcc=1,bfs_src=6,bfs_reached=99994
+#check,gonum,n=100000,edges=499975,pr_top=98314,pr_top_score=0.000093019,wcc=1,bfs_src=6,bfs_reached=99994
+#check,networkx,n=100000,edges=499975,pr_top=98314,pr_top_score=0.000092982,wcc=1,bfs_src=6,bfs_reached=99994
+#check,igraph,n=100000,edges=499975,pr_top=98314,pr_top_score=0.000092978,wcc=1,bfs_src=6,bfs_reached=99994
+#check,gonx,n=1000000,edges=4999975,pr_top=978481,pr_top_score=0.000010443,wcc=1,bfs_src=6,bfs_reached=999994
+#check,gonum,n=1000000,edges=4999975,pr_top=978481,pr_top_score=0.000010441,wcc=1,bfs_src=6,bfs_reached=999994
+#check,networkx,n=1000000,edges=4999975,pr_top=978481,pr_top_score=0.000010443,wcc=1,bfs_src=6,bfs_reached=999994
+#check,igraph,n=1000000,edges=4999975,pr_top=978481,pr_top_score=0.000010441,wcc=1,bfs_src=6,bfs_reached=999994
