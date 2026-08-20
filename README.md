@@ -149,10 +149,9 @@ directed edges (Apple M3 Max; ratio vs gonx in parentheses):
 | BFS reachability | **39 ms** | 2.3 s (59×) | 145 ms (3.7×) | 2.1 s (55×) |
 | peak memory | **286 MB** | 3.0 GB | 1.6 GB | 2.7 GB |
 
-igraph's C core wins weak components outright — worth knowing if that
-is your bottleneck. And networkx trades speed for an enormous algorithm
-catalog and pure-Python hackability; the comparison here is about what
-a compiled CSR core buys, not about which library to love.
+igraph's C core wins weak components outright. networkx is the slowest
+but implements far more algorithms. The table measures these four
+operations on this workload, nothing broader.
 
 ## Status
 
