@@ -6,11 +6,11 @@ A performance-oriented graph library for Go, in the spirit of Python's
 [networkx](https://networkx.org/) but built around dense integer node IDs and a
 compact, cache-friendly representation.
 
-`gonx` targets workloads that build a graph once and then read it intensively —
-agent-based simulations, network metrics, repeated traversals. It separates
-mutation from reading: a `Builder` assembles the topology, then freezes into an
-immutable `Graph` stored in [Compressed Sparse Row](https://en.wikipedia.org/wiki/Sparse_matrix#Compressed_sparse_row_(CSR,_CRS_or_Yale_format))
-form for zero-copy, O(1) neighbor iteration.
+`gonx` targets workloads that build a graph once and then read it intensively,
+such as agent-based simulations, network metrics, and repeated traversals. It
+separates mutation from reading: a `Builder` assembles the topology, then
+freezes into an immutable `Graph` stored in [Compressed Sparse Row](https://en.wikipedia.org/wiki/Sparse_matrix#Compressed_sparse_row_(CSR,_CRS_or_Yale_format))
+form with zero-copy, O(1) access to sorted neighbor slices.
 
 ```go
 import (
@@ -158,9 +158,10 @@ operations on this workload, nothing broader.
 
 v1 focused on undirected, unweighted graphs; v1.1 adds directed graphs
 (`Digraph`), `PageRank`, and `WeaklyConnectedComponents`, extracted from real
-usage mapping the full Go module dependency graph (2.6M nodes, 9.4M edges). Weighted graphs, generic node labels,
-serialization, and further algorithms (strongly connected components, more
-centralities, community detection) remain intentionally out of scope for now.
+usage mapping the full Go module dependency graph (2.6M nodes, 9.4M edges).
+Weighted graphs, generic node labels, serialization, and further algorithms
+(strongly connected components, more centralities, community detection) remain
+intentionally out of scope for now.
 
 ## Testing
 
@@ -172,4 +173,4 @@ go test -fuzz FuzzDoubleEdgeSwap ./transform   # degree-preservation fuzzing
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
