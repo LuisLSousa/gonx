@@ -106,10 +106,11 @@ g := b.Build()
 - **Directed graphs.** `Digraph`/`DigraphBuilder` mirror the undirected pair, with
   the CSR stored in *both* directions: `OutNeighbors(u)` and `InNeighbors(u)` are
   equally cheap, which is what reverse-flow algorithms like PageRank and "who
-  links here" queries need. Built for mapping dependency graphs at ecosystem
-  scale (millions of nodes).
+  links here" queries need. Built for
+  [The Shape of Go](https://luislsousa.com/blog/the-shape-of-go), which maps
+  all 2.6 million public Go modules and their 9.4 million dependency edges.
 - **Reproducible randomness.** Every randomized operation takes an explicit
-  `*math/rand/v2.Rand`. Same seed + parameters ⇒ byte-identical graph. The package
+  `*math/rand/v2.Rand`. The same seed and parameters give a byte-identical graph. The package
   never touches a global RNG.
 - **Parallel where it pays.** All-pairs shortest paths and triangle counting are
   parallelized over independent source nodes with order-independent reductions, so
@@ -157,7 +158,7 @@ operations on this workload, nothing broader.
 
 v1 focused on undirected, unweighted graphs; v1.1 adds directed graphs
 (`Digraph`), `PageRank`, and `WeaklyConnectedComponents`, extracted from real
-usage mapping large dependency graphs. Weighted graphs, generic node labels,
+usage mapping the full Go module dependency graph (2.6M nodes, 9.4M edges). Weighted graphs, generic node labels,
 serialization, and further algorithms (strongly connected components, more
 centralities, community detection) remain intentionally out of scope for now.
 
