@@ -9,7 +9,7 @@ import (
 	"github.com/LuisLSousa/gonx"
 )
 
-// Copy returns an independent deep copy of g.
+// Copy returns an independent deep copy of g, edge weights included.
 func Copy(g *gonx.Graph) *gonx.Graph {
 	return g.ToBuilder().Build()
 }
@@ -17,7 +17,7 @@ func Copy(g *gonx.Graph) *gonx.Graph {
 // RelabelNodes returns a new graph in which node i becomes node perm[i]. perm must
 // be a permutation of [0, N). The transformation is a graph isomorphism: it
 // preserves the degree sequence and all structural metrics, changing only the
-// identities attached to each position.
+// identities attached to each position. Edge weights travel with their edges.
 func RelabelNodes(g *gonx.Graph, perm []int) (*gonx.Graph, error) {
 	n := g.NumNodes()
 	if len(perm) != n {
@@ -31,8 +31,18 @@ func RelabelNodes(g *gonx.Graph, perm []int) (*gonx.Graph, error) {
 		seen[p] = true
 	}
 	b := gonx.NewBuilder(n)
-	for u, v := range g.Edges() {
-		b.AddEdge(perm[u], perm[v])
+	for u := 0; u < n; u++ {
+		nbrs, ws := g.Neighbors(u), g.Weights(u)
+		for i, v := range nbrs {
+			if int(v) <= u {
+				continue // each undirected edge once, from its smaller endpoint
+			}
+			if ws == nil {
+				b.AddEdge(perm[u], perm[int(v)])
+			} else {
+				b.AddEdgeW(perm[u], perm[int(v)], ws[i])
+			}
+		}
 	}
 	return b.Build(), nil
 }
@@ -70,9 +80,17 @@ func ShuffleWithPerm(g *gonx.Graph, r *rand.Rand) (*gonx.Graph, []int) {
 // networkx.double_edge_swap and is the standard way to build degree-preserving
 // null models: graphs with the same degree sequence as the original but
 // otherwise randomized wiring.
+//
+// Weighted graphs are rejected with an error wrapping [gonx.ErrInvalidParam]. A
+// rewired edge has no well-defined weight, and inventing one (networkx quietly
+// drops the attributes) would hide the problem from the caller. Build the null
+// model from the unweighted topology and reattach weights deliberately.
 func DoubleEdgeSwap(g *gonx.Graph, nswap, maxTries int, r *rand.Rand) (*gonx.Graph, int, error) {
 	if nswap < 0 {
 		return nil, 0, fmt.Errorf("%w: nswap must be >= 0, got %d", gonx.ErrInvalidParam, nswap)
+	}
+	if g.Weighted() {
+		return nil, 0, fmt.Errorf("%w: DoubleEdgeSwap needs an unweighted graph; rewired edges have no weight to carry", gonx.ErrInvalidParam)
 	}
 	if g.NumEdges() < 2 {
 		return Copy(g), 0, nil
