@@ -83,3 +83,73 @@ func ExampleDigraph_OutNeighborsSeq() {
 	// Output:
 	// 4
 }
+
+func ExampleBuilder_AddEdgeW() {
+	// A weighted triangle. Weights ride along with their edges through Build and
+	// come back aligned with Neighbors.
+	b := gonx.NewBuilder(3)
+	b.AddEdgeW(0, 1, 2.5)
+	b.AddEdgeW(1, 2, 0.5)
+	b.AddEdge(0, 2) // an unweighted add on a weighted builder means weight 1
+	g := b.Build()
+
+	fmt.Println(g.Neighbors(1), g.Weights(1))
+	fmt.Println(g.Weight(0, 2))
+	fmt.Println(g.Weight(1, 1))
+	// Output:
+	// [0 2] [2.5 0.5]
+	// 1 true
+	// 0 false
+}
+
+func ExampleGraph_EdgeOffset() {
+	// Per-edge data of your own, stored in a slice laid out like the adjacency:
+	// slot EdgeOffset(u)+i belongs to the edge from u to Neighbors(u)[i]. Here
+	// each edge is labeled at both of its ends.
+	b := gonx.NewBuilder(3)
+	b.AddEdge(0, 1)
+	b.AddEdge(1, 2)
+	g := b.Build()
+
+	label := make([]string, 2*g.NumEdges())
+	names := map[[2]int]string{{0, 1}: "a", {1, 2}: "b"}
+	for u := range g.Nodes() {
+		for i, v := range g.Neighbors(u) {
+			lo, hi := min(u, int(v)), max(u, int(v))
+			label[g.EdgeOffset(u)+i] = names[[2]int{lo, hi}]
+		}
+	}
+	fmt.Println(label[g.EdgeOffset(1) : g.EdgeOffset(1)+g.Degree(1)])
+	// Output:
+	// [a b]
+}
+
+func ExampleForward() {
+	// One function for both graph kinds: the total weight leaving each node.
+	outWeight := func(g gonx.Forward) []float64 {
+		out := make([]float64, g.NumNodes())
+		for u := range out {
+			if g.Weighted() {
+				for _, w := range g.OutWeights(u) {
+					out[u] += w
+				}
+			} else {
+				out[u] = float64(len(g.OutNeighbors(u)))
+			}
+		}
+		return out
+	}
+
+	ub := gonx.NewBuilder(3)
+	ub.AddEdgeW(0, 1, 2)
+	ub.AddEdgeW(1, 2, 3)
+	db := gonx.NewDigraphBuilder(3)
+	db.AddEdgeW(0, 1, 2)
+	db.AddEdgeW(1, 2, 3)
+
+	fmt.Println(outWeight(ub.Build())) // an undirected edge leaves both ends
+	fmt.Println(outWeight(db.Build()))
+	// Output:
+	// [2 5 3]
+	// [2 3 0]
+}

@@ -10,10 +10,16 @@
 // directed counterparts; a Digraph stores both edge directions in CSR form, so
 // out-neighbors and in-neighbors are equally cheap to walk.
 //
-// Node IDs are dense integers in the range [0, N). Graphs are unweighted and
-// always simple (no self-loops or duplicate edges). All randomized operations
-// take an explicit *math/rand/v2.Rand so results are fully reproducible; the
-// package never touches a global RNG.
+// Node IDs are dense integers in the range [0, N). Graphs are always simple (no
+// self-loops or duplicate edges). Edges are unweighted unless the builder was
+// given weights through [Builder.AddEdgeW]; a weighted graph stores one float64
+// per edge in an array laid out exactly like the adjacency, so the weight of
+// Neighbors(u)[i] is Weights(u)[i] and an unweighted graph pays nothing for the
+// feature. [Forward] is the traversal view shared by Graph and Digraph; it is
+// what algorithms that only walk edges in their natural direction take.
+//
+// All randomized operations take an explicit *math/rand/v2.Rand so results are
+// fully reproducible; the package never touches a global RNG.
 package gonx
 
 import (
@@ -58,9 +64,14 @@ func panicNode(op string, u, n int) {
 //
 // Edge methods (AddEdge, RemoveEdge, HasEdge) treat out-of-range endpoints as
 // absent edges and report false; Degree panics on an out-of-range node.
+//
+// A Builder starts unweighted. The first [Builder.AddEdgeW] call switches it to
+// weighted for good; see that method for how edges without an explicit weight
+// are treated.
 type Builder struct {
-	adj [][]int32 // adj[u] holds u's neighbors; undirected edges appear in both lists
-	m   int       // number of undirected edges
+	adj [][]int32   // adj[u] holds u's neighbors; undirected edges appear in both lists
+	w   [][]float64 // w[u] weights a prefix of adj[u] (see AddEdgeW); nil until the first AddEdgeW
+	m   int         // number of undirected edges
 }
 
 // NewBuilder returns a Builder with n isolated nodes (IDs 0..n-1). It panics if
@@ -81,6 +92,10 @@ func (b *Builder) NumNodes() int { return len(b.adj) }
 // NumEdges reports the number of undirected edges.
 func (b *Builder) NumEdges() int { return b.m }
 
+// Weighted reports whether the Builder carries edge weights, which is the case
+// from the first [Builder.AddEdgeW] call on.
+func (b *Builder) Weighted() bool { return b.w != nil }
+
 // AddNode appends a new isolated node and returns its ID. It panics if the node
 // count would exceed 2^31-1.
 func (b *Builder) AddNode() int {
@@ -88,6 +103,9 @@ func (b *Builder) AddNode() int {
 		panic("gonx: AddNode: node count would exceed 2^31-1")
 	}
 	b.adj = append(b.adj, nil)
+	if b.w != nil {
+		b.w = append(b.w, nil)
+	}
 	return len(b.adj) - 1
 }
 
@@ -122,6 +140,50 @@ func (b *Builder) AddEdge(u, v int) bool {
 	return true
 }
 
+// AddEdgeW inserts the undirected edge {u, v} with weight w. It rejects
+// everything AddEdge rejects, plus NaN and infinite weights, returning false in
+// each case. Any finite weight is accepted, zero and negative values included;
+// algorithms that need non-negative weights say so and check for themselves.
+//
+// The first AddEdgeW call makes the Builder weighted. Every edge already present
+// then has weight 1, and edges added afterwards with AddEdge or AddEdgeUnchecked
+// get weight 1 too, so a weighted graph has a weight for every edge. This is the
+// networkx convention for a missing weight.
+//
+// Internally a weight list covers only a prefix of its neighbor list; positions
+// past its end hold the implicit weight 1. That is what lets AddEdge and
+// AddEdgeUnchecked stay free of weight bookkeeping, and therefore exactly as
+// small and as inlinable as they were before weights existed: the unweighted
+// path pays nothing for the feature, in code as well as in memory.
+func (b *Builder) AddEdgeW(u, v int, w float64) bool {
+	if math.IsNaN(w) || math.IsInf(w, 0) {
+		return false
+	}
+	n := len(b.adj)
+	if u == v || u < 0 || v < 0 || u >= n || v >= n || b.HasEdge(u, v) {
+		return false
+	}
+	if b.w == nil {
+		b.w = make([][]float64, n)
+	}
+	b.adj[u] = append(b.adj[u], int32(v))
+	b.w[u] = appendWeight(b.w[u], len(b.adj[u])-1, w)
+	b.adj[v] = append(b.adj[v], int32(u))
+	b.w[v] = appendWeight(b.w[v], len(b.adj[v])-1, w)
+	b.m++
+	return true
+}
+
+// appendWeight records w as the weight of the neighbor at position pos,
+// padding the list with the implicit weight 1 for any earlier positions it did
+// not yet cover.
+func appendWeight(ws []float64, pos int, w float64) []float64 {
+	for len(ws) < pos {
+		ws = append(ws, 1)
+	}
+	return append(ws, w)
+}
+
 // AddEdgeUnchecked inserts the undirected edge {u, v} without checking whether it
 // already exists. Endpoints are still validated and self-loops rejected (returning
 // false), but inserting an edge that is already present corrupts the Builder: the
@@ -145,21 +207,79 @@ func (b *Builder) RemoveEdge(u, v int) bool {
 	if !b.HasEdge(u, v) {
 		return false
 	}
-	remove(&b.adj[u], int32(v))
-	remove(&b.adj[v], int32(u))
+	i := unlink(&b.adj[u], int32(v))
+	j := unlink(&b.adj[v], int32(u))
+	if b.w != nil {
+		b.w[u] = moveWeight(b.w[u], i, len(b.adj[u]))
+		b.w[v] = moveWeight(b.w[v], j, len(b.adj[v]))
+	}
 	b.m--
 	return true
 }
 
-// remove deletes the first occurrence of x from *s (order not preserved).
-func remove(s *[]int32, x int32) {
-	a := *s
-	for i, w := range a {
-		if w == x {
-			a[i] = a[len(a)-1]
-			*s = a[:len(a)-1]
-			return
+// unlink deletes the first occurrence of v from *adj by moving the last entry
+// into its slot, and returns the position it freed. Order within a builder
+// list is not preserved, which is fine: Build sorts every list. The caller
+// guarantees v is present. It is deliberately just the loop, so that it stays
+// inlinable; the weight bookkeeping happens in the callers.
+func unlink(adj *[]int32, v int32) int {
+	a := *adj
+	last := len(a) - 1
+	for i, x := range a {
+		if x == v {
+			a[i] = a[last]
+			*adj = a[:last]
+			return i
 		}
+	}
+	return -1 // not reached: the caller has checked that v is present
+}
+
+// moveWeight applies to a prefix weight list the swap-delete that unlink just
+// performed on its neighbor list, whose length is now last: the weight at
+// position last (implicitly 1 when the list does not reach it) moves to
+// position i, and the list shrinks to at most last entries. A position i beyond
+// the list already reads as 1 and needs no write, because the only weight that
+// could land there is the one past the end, which is 1 as well.
+func moveWeight(ws []float64, i, last int) []float64 {
+	if i < len(ws) {
+		if last < len(ws) {
+			ws[i] = ws[last]
+		} else {
+			ws[i] = 1
+		}
+	}
+	if len(ws) > last {
+		ws = ws[:last]
+	}
+	return ws
+}
+
+// denseWeights expands a prefix weight list to the full length of its neighbor
+// list, writing into dst and padding the tail with 1.
+func denseWeights(ws []float64, dst []float64) []float64 {
+	n := copy(dst, ws)
+	for i := n; i < len(dst); i++ {
+		dst[i] = 1
+	}
+	return dst
+}
+
+// copySorted writes nbrs into dst in ascending order and carries each entry's
+// weight along into dstW. Rather than sorting two arrays in lockstep it sorts
+// packed (neighbor, position) keys, a plain slices.Sort over uint64s, and then
+// gathers. Neighbors within a list are distinct and non-negative, so the high
+// word orders the keys by neighbor and the low word says where each weight came
+// from. keys is caller-provided scratch of at least len(nbrs).
+func copySorted(nbrs []int32, ws []float64, dst []int32, dstW []float64, keys []uint64) {
+	keys = keys[:len(nbrs)]
+	for i, v := range nbrs {
+		keys[i] = uint64(v)<<32 | uint64(i)
+	}
+	slices.Sort(keys)
+	for i, k := range keys {
+		dst[i] = int32(k >> 32)
+		dstW[i] = ws[uint32(k)]
 	}
 }
 
@@ -173,15 +293,17 @@ func (b *Builder) Degree(u int) int {
 
 // Build freezes the Builder into an immutable CSR [Graph]. Neighbor lists are
 // sorted so the resulting Graph supports binary-search edge tests and has a
-// canonical, deterministic layout. The Builder may be reused afterwards.
+// canonical, deterministic layout; on a weighted Builder each weight travels
+// with its edge. The Builder may be reused afterwards.
 //
 // Build panics if the total adjacency size (2 * edges) exceeds 2^31-1, the
 // capacity of the int32 CSR offsets.
 func (b *Builder) Build() *Graph {
 	n := len(b.adj)
-	total := 0
+	total, maxDeg := 0, 0
 	for _, nbrs := range b.adj {
 		total += len(nbrs)
+		maxDeg = max(maxDeg, len(nbrs))
 	}
 	if total > maxNodes {
 		panic(fmt.Sprintf("gonx: Build: adjacency size %d (2 * edges) exceeds int32 CSR capacity %d", total, maxNodes))
@@ -196,25 +318,40 @@ func (b *Builder) Build() *Graph {
 	offsets[n] = off
 
 	data := make([]int32, total)
-	for u := 0; u < n; u++ {
-		row := data[offsets[u]:offsets[u+1]]
-		copy(row, b.adj[u])
-		slices.Sort(row)
+	if b.w == nil {
+		for u := 0; u < n; u++ {
+			row := data[offsets[u]:offsets[u+1]]
+			copy(row, b.adj[u])
+			slices.Sort(row)
+		}
+		return &Graph{offsets: offsets, data: data, m: b.m}
 	}
-	return &Graph{offsets: offsets, data: data, m: b.m}
+
+	weights := make([]float64, total)
+	keys := make([]uint64, maxDeg)
+	row := make([]float64, maxDeg)
+	for u := 0; u < n; u++ {
+		lo, hi := offsets[u], offsets[u+1]
+		ws := denseWeights(b.w[u], row[:len(b.adj[u])])
+		copySorted(b.adj[u], ws, data[lo:hi], weights[lo:hi], keys)
+	}
+	return &Graph{offsets: offsets, data: data, weights: weights, m: b.m}
 }
 
-// Graph is an immutable, undirected, unweighted graph stored in Compressed Sparse
-// Row form. The neighbors of node u occupy data[offsets[u]:offsets[u+1]] and are
-// sorted ascending. A Graph is safe for concurrent reads. The zero value is not
-// a valid Graph; obtain one from [Builder.Build].
+// Graph is an immutable, undirected graph stored in Compressed Sparse Row form.
+// The neighbors of node u occupy data[offsets[u]:offsets[u+1]] and are sorted
+// ascending; on a weighted graph, weights uses the same indices. A Graph is safe
+// for concurrent reads. The zero value is not a valid Graph; obtain one from
+// [Builder.Build].
 //
-// Accessors that take a node ID (Degree, Neighbors, NeighborsSeq, RandomNeighbor)
-// panic with a descriptive message when the ID is outside [0, N); HasEdge is the
-// exception and reports false for out-of-range endpoints.
+// Accessors that take a node ID (Degree, Neighbors, Weights, EdgeOffset,
+// NeighborsSeq, RandomNeighbor, and the [Forward] aliases) panic with a
+// descriptive message when the ID is outside [0, N); HasEdge and Weight are the
+// exceptions and report false for out-of-range endpoints.
 type Graph struct {
-	offsets []int32 // length n+1
-	data    []int32 // length 2*m; concatenated sorted neighbor lists
+	offsets []int32   // length n+1
+	data    []int32   // length 2*m; concatenated sorted neighbor lists
+	weights []float64 // length 2*m, weights[i] belongs to data[i]; nil when unweighted
 	m       int
 }
 
@@ -274,6 +411,69 @@ func (g *Graph) HasEdge(u, v int) bool {
 	return lo < len(nbrs) && nbrs[lo] == target
 }
 
+// Weighted reports whether the graph carries edge weights. An unweighted graph
+// stores no weight array at all: Weights returns nil for every node and Weight
+// reports 1 for every edge.
+func (g *Graph) Weighted() bool { return g.weights != nil }
+
+// Weights returns the weights of u's edges, aligned index for index with
+// [Graph.Neighbors]: Weights(u)[i] is the weight of the edge to Neighbors(u)[i].
+// The slice is zero-copy and MUST NOT be modified. It is nil when the graph is
+// unweighted. It panics if u is out of range.
+func (g *Graph) Weights(u int) []float64 {
+	if u < 0 || u >= g.NumNodes() {
+		panicNode("Weights", u, g.NumNodes())
+	}
+	if g.weights == nil {
+		return nil
+	}
+	return g.weights[g.offsets[u]:g.offsets[u+1]]
+}
+
+// Weight returns the weight of the edge {u, v}. ok is false when the edge does
+// not exist or an endpoint is out of range. On an unweighted graph every
+// existing edge has weight 1. Like [Graph.HasEdge] it binary-searches the
+// smaller-degree endpoint's list, so it runs in O(log deg).
+func (g *Graph) Weight(u, v int) (w float64, ok bool) {
+	n := g.NumNodes()
+	if u < 0 || v < 0 || u >= n || v >= n {
+		return 0, false
+	}
+	if g.Degree(u) > g.Degree(v) {
+		u, v = v, u
+	}
+	i, found := slices.BinarySearch(g.Neighbors(u), int32(v))
+	if !found {
+		return 0, false
+	}
+	if g.weights == nil {
+		return 1, true
+	}
+	return g.weights[int(g.offsets[u])+i], true
+}
+
+// EdgeOffset returns the index at which u's edges start in the graph's
+// edge-indexed arrays: entry i of Neighbors(u), and of Weights(u), sits at
+// position EdgeOffset(u)+i in an array of length 2*NumEdges, one slot per
+// half-edge. It exists so callers can keep their own per-edge attributes in a
+// plain slice laid out exactly like the adjacency, and so metrics that return
+// per-edge values can use the same indexing. Because an undirected edge has a
+// slot at each end, store a per-edge value in both slots or agree on the u < v
+// one. It panics if u is out of range.
+func (g *Graph) EdgeOffset(u int) int {
+	if u < 0 || u >= g.NumNodes() {
+		panicNode("EdgeOffset", u, g.NumNodes())
+	}
+	return int(g.offsets[u])
+}
+
+// OutNeighbors is [Graph.Neighbors] under the name [Forward] uses. An undirected
+// edge can be walked from either end, so every neighbor is a successor.
+func (g *Graph) OutNeighbors(u int) []int32 { return g.Neighbors(u) }
+
+// OutWeights is [Graph.Weights] under the name [Forward] uses.
+func (g *Graph) OutWeights(u int) []float64 { return g.Weights(u) }
+
 // RandomNeighbor returns a uniformly random neighbor of u. ok is false when u is
 // isolated. It panics if u is out of range.
 func (g *Graph) RandomNeighbor(u int, r *rand.Rand) (v int, ok bool) {
@@ -313,13 +513,19 @@ func (g *Graph) Edges() iter.Seq2[int, int] {
 	}
 }
 
-// ToBuilder returns a mutable copy of the graph.
+// ToBuilder returns a mutable copy of the graph, weights included.
 func (g *Graph) ToBuilder() *Builder {
 	n := g.NumNodes()
 	b := &Builder{adj: make([][]int32, n), m: g.m}
+	if g.weights != nil {
+		b.w = make([][]float64, n)
+	}
 	for u := 0; u < n; u++ {
 		nbrs := g.Neighbors(u)
 		b.adj[u] = append(make([]int32, 0, len(nbrs)), nbrs...)
+		if b.w != nil {
+			b.w[u] = slices.Clone(g.Weights(u))
+		}
 	}
 	return b
 }
