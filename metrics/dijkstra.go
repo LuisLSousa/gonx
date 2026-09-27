@@ -36,6 +36,6 @@ var ErrNegativeWeight = errors.New("gonx/metrics: negative edge weight")
 // It panics if src is out of range, or if dist or a non-nil prev does not have
 // length g.NumNodes(). It runs in O((n + m) log n) time and allocates O(n)
 // scratch per call.
-func Dijkstra(g gonx.Forward, src int, dist []float64, prev []int32) error {
+func Dijkstra(g gonx.Adjacency, src int, dist []float64, prev []int32) error {
 	return errors.New("gonx/metrics: Dijkstra is not implemented yet")
 }

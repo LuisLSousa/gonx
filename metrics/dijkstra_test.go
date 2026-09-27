@@ -17,7 +17,7 @@ import (
 
 // loadEdges parses a testdata edge list ("undirected N" or "directed N" on the
 // first line, then "u v w" per edge) into the graph kind it names.
-func loadEdges(t *testing.T, name string) gonx.Forward {
+func loadEdges(t *testing.T, name string) gonx.Adjacency {
 	t.Helper()
 	f, err := os.Open(filepath.Join("testdata", name))
 	if err != nil {
@@ -92,7 +92,7 @@ func loadExpected(t *testing.T, name string) map[int][]float64 {
 
 // edgeWeight returns the weight of the forward edge u->v in g, or false when
 // there is none. Unweighted graphs report 1.
-func edgeWeight(g gonx.Forward, u, v int) (float64, bool) {
+func edgeWeight(g gonx.Adjacency, u, v int) (float64, bool) {
 	ws := g.OutWeights(u)
 	for i, x := range g.OutNeighbors(u) {
 		if int(x) == v {
@@ -121,7 +121,7 @@ func poison(dist []float64, prev []int32) {
 // predecessor, every other node's predecessor is a real edge whose weight
 // closes the distance exactly, and following prev from any reachable node
 // arrives at src within n steps (so zero-weight cycles cannot hide in it).
-func checkTree(t *testing.T, g gonx.Forward, src int, dist []float64, prev []int32) {
+func checkTree(t *testing.T, g gonx.Adjacency, src int, dist []float64, prev []int32) {
 	t.Helper()
 	n := len(dist)
 	if dist[src] != 0 || prev[src] != -1 {
@@ -263,7 +263,7 @@ func TestDijkstraUnweightedEqualsBreadthFirst(t *testing.T) {
 	for db.NumEdges() < 400 {
 		db.AddEdge(r.IntN(150), r.IntN(150))
 	}
-	for name, g := range map[string]gonx.Forward{"undirected": ug, "directed": db.Build()} {
+	for name, g := range map[string]gonx.Adjacency{"undirected": ug, "directed": db.Build()} {
 		n := g.NumNodes()
 		dist := make([]float64, n)
 		hops := make([]int32, n)
@@ -346,7 +346,7 @@ func TestDijkstraOverflowReadsAsUnreachable(t *testing.T) {
 }
 
 // bellmanFord is the oracle: slower, simpler, and correct for any weights.
-func bellmanFord(g gonx.Forward, src int) []float64 {
+func bellmanFord(g gonx.Adjacency, src int) []float64 {
 	n := g.NumNodes()
 	dist := make([]float64, n)
 	for i := range dist {
@@ -396,7 +396,7 @@ func TestDijkstraAgainstBellmanFord(t *testing.T) {
 		db.AddEdgeW(r.IntN(250), r.IntN(250), weight())
 	}
 
-	for name, g := range map[string]gonx.Forward{"undirected": ub.Build(), "directed": db.Build()} {
+	for name, g := range map[string]gonx.Adjacency{"undirected": ub.Build(), "directed": db.Build()} {
 		n := g.NumNodes()
 		dist := make([]float64, n)
 		prev := make([]int32, n)
