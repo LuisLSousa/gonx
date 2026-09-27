@@ -18,6 +18,8 @@ package gonx
 //     OutWeights(u) has the same length as OutNeighbors(u) and OutWeights(u)[i]
 //     is the finite weight of the edge to OutNeighbors(u)[i]; when it is false,
 //     OutWeights returns nil and every edge counts as weight 1.
+//   - HasNegativeWeight is true if, and only if, some OutWeights entry is
+//     below zero, and like Weighted it costs O(1).
 //   - Returned slices are views into the graph's storage: read-only, with no
 //     spare capacity, and valid for as long as the graph is. They may be held
 //     across calls, and the graph may be read from several goroutines at once.
@@ -31,6 +33,7 @@ type Adjacency interface {
 	OutNeighbors(u int) []int32
 	OutWeights(u int) []float64
 	Weighted() bool
+	HasNegativeWeight() bool
 
 	adjacency() // seals the interface to this package
 }

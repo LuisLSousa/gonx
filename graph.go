@@ -273,6 +273,16 @@ func moveWeight(ws []float64, i, last int) []float64 {
 	return ws
 }
 
+// anyNegative reports whether some weight is below zero. -0 is not.
+func anyNegative(ws []float64) bool {
+	for _, w := range ws {
+		if w < 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // denseWeights expands a prefix weight list to the full length of its neighbor
 // list, writing into dst and padding the tail with 1.
 func denseWeights(ws []float64, dst []float64) []float64 {
@@ -356,7 +366,7 @@ func (b *Builder) Build() *Graph {
 		ws := denseWeights(b.w[u], row[:len(b.adj[u])])
 		copySorted(b.adj[u], ws, data[lo:hi], weights[lo:hi], keys)
 	}
-	return &Graph{offsets: offsets, data: data, weights: weights, m: b.m}
+	return &Graph{offsets: offsets, data: data, weights: weights, negative: anyNegative(weights), m: b.m}
 }
 
 // Graph is an immutable, undirected graph stored in Compressed Sparse Row form.
@@ -373,10 +383,11 @@ func (b *Builder) Build() *Graph {
 // spare capacity, so appending to one allocates rather than overwriting a
 // neighbor's data.
 type Graph struct {
-	offsets []int32   // length n+1
-	data    []int32   // length 2*m; concatenated sorted neighbor lists
-	weights []float64 // length 2*m, weights[i] belongs to data[i]; nil when unweighted
-	m       int
+	offsets  []int32   // length n+1
+	data     []int32   // length 2*m; concatenated sorted neighbor lists
+	weights  []float64 // length 2*m, weights[i] belongs to data[i]; nil when unweighted
+	negative bool      // some weight is below zero
+	m        int
 }
 
 // NumNodes reports the number of nodes.
@@ -440,6 +451,11 @@ func (g *Graph) HasEdge(u, v int) bool {
 // stores no weight array at all: Weights returns nil for every node and Weight
 // reports 1 for every edge.
 func (g *Graph) Weighted() bool { return g.weights != nil }
+
+// HasNegativeWeight reports whether any edge weighs less than zero. It is
+// always false on an unweighted graph. Build records the answer, so the call is
+// O(1); algorithms that need non-negative weights check it once up front.
+func (g *Graph) HasNegativeWeight() bool { return g.negative }
 
 // Weights returns the weights of u's edges, aligned index for index with
 // [Graph.Neighbors]: Weights(u)[i] is the weight of the edge to Neighbors(u)[i].
