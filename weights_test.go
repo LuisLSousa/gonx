@@ -572,28 +572,34 @@ func checkPrefix(t *testing.T, ub *Builder, db *DigraphBuilder) {
 	}
 }
 
-// FuzzWeightsAligned drives both builders through an opcode script: weighted
-// and unweighted adds (checked and unchecked), removals, AddNode, Build with
-// continued mutation afterwards, and ToBuilder round trips. After every step it
-// checks the prefix invariant, and at every Build that each weight came out on
-// its edge. Weights avoid 1 on purpose, so a slot filled by the implicit default
-// can never pass as a real weight.
+// FuzzWeightsAligned drives both builders through a script of four-byte
+// instructions (opcode, two node bytes, a weight byte): weighted and unweighted
+// adds (checked and unchecked), removals, AddNode, Build with continued
+// mutation afterwards, ToBuilder round trips, and a restart from the weighted
+// constructors. After every step it checks the prefix invariant, and at every
+// Build that each weight came out on its edge. Weights avoid 1 on purpose, so a
+// slot filled by the implicit default can never pass as a real weight, and
+// take 256 distinct values, so two edges in one row rarely share one and a swap
+// between them shows.
 func FuzzWeightsAligned(f *testing.F) {
-	f.Add([]byte{0x00, 1, 2, 0x44, 2, 3, 0x76, 3, 0, 0xa0, 0, 0, 0x99, 0, 0, 0x0f, 4, 1, 0xb0, 0, 0, 0x88, 1, 2})
-	f.Add(bytes.Repeat([]byte{0x11, 0x87, 0x2a, 0xfe, 0x63, 0x05}, 40))
+	f.Add([]byte{
+		0, 1, 2, 10, 4, 2, 3, 0, 6, 3, 0, 0, 10, 0, 0, 0, 9, 0, 0, 0, 0, 4, 1, 200,
+		11, 0, 0, 0, 8, 1, 2, 0, 12, 0, 0, 0, 4, 0, 1, 0, 0, 1, 3, 77, 10, 0, 0, 0,
+	})
+	f.Add(bytes.Repeat([]byte{0x11, 0x87, 0x2a, 0xfe, 0x63, 0x05, 0x40, 0x9c}, 40))
 	f.Fuzz(func(t *testing.T, script []byte) {
-		if len(script) > 6000 {
-			script = script[:6000]
+		if len(script) > 8000 {
+			script = script[:8000]
 		}
 		ub, db := NewBuilder(4), NewDigraphBuilder(4)
 		uwant, dwant := map[[2]int]float64{}, map[[2]int]float64{}
-		for i := 0; i+2 < len(script); i += 3 {
-			op, a, c := script[i], int(script[i+1]), int(script[i+2])
+		for i := 0; i+3 < len(script); i += 4 {
+			op, a, c, wb := script[i]%13, int(script[i+1]), int(script[i+2]), script[i+3]
 			n := ub.NumNodes()
 			u, v := a%n, c%n
-			w := 2 + float64(op>>4)/4 // 2.0 .. 5.75, never 1
-			switch op & 0x0f {
-			case 0, 1, 2, 3, 12, 13, 14, 15:
+			w := 2 + float64(wb)/32 // 2.0 .. 9.97, never 1
+			switch op {
+			case 0, 1, 2, 3:
 				if ub.AddEdgeW(u, v, w) {
 					uwant[edgeKey(u, v)] = w
 				}
@@ -632,6 +638,10 @@ func FuzzWeightsAligned(f *testing.F) {
 			case 11: // round trip through the immutable form
 				ub = ub.Build().ToBuilder()
 				db = db.Build().ToBuilder()
+			case 12: // start over from the weighted constructors
+				ub, db = NewWeightedBuilder(n), NewWeightedDigraphBuilder(n)
+				clear(uwant)
+				clear(dwant)
 			}
 			checkPrefix(t, ub, db)
 		}

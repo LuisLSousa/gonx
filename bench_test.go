@@ -150,7 +150,10 @@ func BenchmarkWeightedNeighborIteration_10000(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		for u := 0; u < g.NumNodes(); u++ {
 			nbrs := g.Neighbors(u)
-			ws := g.Weights(u)[:len(nbrs)] // tells the compiler the two rows match; drops the per-edge bounds check
+			// Reslicing to len(nbrs) tells the compiler the two rows match and drops
+			// the per-edge bounds check. The graph here is weighted; on an
+			// unweighted one Weights is nil and this line would panic.
+			ws := g.Weights(u)[:len(nbrs)]
 			for j, v := range nbrs {
 				sum += ws[j] * float64(v)
 			}

@@ -170,10 +170,8 @@ v1 focused on undirected, unweighted graphs; v1.1 added directed graphs
 (`Digraph`), `PageRank`, and `WeaklyConnectedComponents`, extracted from real
 usage mapping the full Go module dependency graph (2.6M nodes, 9.4M edges).
 Both graph kinds now carry optional edge weights and share the `Forward`
-traversal interface. Next on the same foundation: weighted shortest paths,
-bridges and articulation points, and betweenness centrality. Generic node
-labels, serialization, and community detection remain intentionally out of
-scope.
+traversal interface. Generic node labels, serialization, and community
+detection remain intentionally out of scope.
 
 ## Testing
 

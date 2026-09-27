@@ -20,9 +20,10 @@ package gonx
 //     spare capacity, and valid for as long as the graph is. They may be held
 //     across calls, and the graph may be read from several goroutines at once.
 //
-// Forward is sealed: only types in this package implement it, so the method set
-// can grow with the algorithms that consume it. A later release may open it to
-// other representations once that set has settled.
+// Forward is sealed: only this package's types, and types embedding them,
+// implement it, so the method set can grow with the algorithms that consume it.
+// A later release may open it to other representations once that set has
+// settled.
 type Forward interface {
 	NumNodes() int
 	OutNeighbors(u int) []int32
