@@ -28,7 +28,6 @@ func anyNegativeWant(want map[[2]int]float64) bool {
 // checkWeights verifies every edge of g against want through both accessors,
 // that neighbor lists are sorted with weights aligned, and that g has no edge
 // beyond want. On an unweighted g every want value must be 1.
-
 func checkWeights(t *testing.T, g *Graph, want map[[2]int]float64) {
 	t.Helper()
 	if g.NumEdges() != len(want) {
