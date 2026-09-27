@@ -134,7 +134,7 @@ g := b.Build()
 | `gonx` | `Graph`/`Digraph` (CSR, optional edge weights), `Builder`/`DigraphBuilder` (+ `NewWeighted*`), `Adjacency`, iterators, `NewRand` |
 | `gonx/generators` | `WattsStrogatz`, `BarabasiAlbert`, `Complete`, `RandomAvgDegree`, `ErdosRenyi` |
 | `gonx/transform` | `DoubleEdgeSwap`, `RelabelNodes`, `Shuffle`, `Copy` |
-| `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS`, `PageRank`, `WeaklyConnectedComponents` |
+| `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS`/`BreadthFirst`, `Dijkstra`, `ShortestPath`, `PageRank`, `WeaklyConnectedComponents` |
 
 > Note on `BarabasiAlbert(n, m, r)`: `m` is the number of edges added per new node
 > (matching networkx), **not** the average degree — the resulting average degree
@@ -170,8 +170,9 @@ v1 focused on undirected, unweighted graphs; v1.1 added directed graphs
 (`Digraph`), `PageRank`, and `WeaklyConnectedComponents`, extracted from real
 usage mapping the full Go module dependency graph (2.6M nodes, 9.4M edges).
 Both graph kinds now carry optional edge weights and share the `Adjacency`
-traversal interface. Generic node labels, serialization, and community
-detection remain intentionally out of scope.
+traversal interface, whose first consumers are `BreadthFirst`, `Dijkstra` and
+`ShortestPath`. Generic node labels, serialization, and community detection
+remain intentionally out of scope.
 
 ## Testing
 
