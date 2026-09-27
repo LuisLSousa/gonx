@@ -83,3 +83,86 @@ func ExampleDigraph_OutNeighborsSeq() {
 	// Output:
 	// 4
 }
+
+func ExampleBuilder_AddEdgeW() {
+	// A weighted triangle. Weights ride along with their edges through Build and
+	// come back aligned with Neighbors.
+	b := gonx.NewBuilder(3)
+	b.AddEdgeW(0, 1, 2.5)
+	b.AddEdgeW(1, 2, 0.5)
+	b.AddEdge(0, 2) // an unweighted add on a weighted builder means weight 1
+	g := b.Build()
+
+	fmt.Println(g.Neighbors(1), g.Weights(1))
+	fmt.Println(g.Weight(0, 2))
+	fmt.Println(g.Weight(1, 1))
+	// Output:
+	// [0 2] [2.5 0.5]
+	// 1 true
+	// 0 false
+}
+
+func ExampleGraph_EdgeOffset() {
+	// Per-edge data of your own lives in a slice laid out like the adjacency:
+	// slot EdgeOffset(u)+i belongs to the edge from u to Neighbors(u)[i].
+	// Compute it once per half-edge, then read it in the hot loop with no map
+	// lookup. Here the value is a resistance of 1/(deg(u)+deg(v)).
+	b := gonx.NewBuilder(4)
+	b.AddEdge(0, 1)
+	b.AddEdge(1, 2)
+	b.AddEdge(1, 3)
+	g := b.Build()
+
+	resistance := make([]float64, 2*g.NumEdges())
+	for u := range g.Nodes() {
+		off := g.EdgeOffset(u)
+		for i, v := range g.Neighbors(u) {
+			resistance[off+i] = 1 / float64(g.Degree(u)+g.Degree(int(v)))
+		}
+	}
+
+	// Total resistance around node 1: three edges of 1/(3+1) each.
+	var total float64
+	off := g.EdgeOffset(1)
+	for i := range g.Neighbors(1) {
+		total += resistance[off+i]
+	}
+	fmt.Println(total)
+
+	// EdgeIndex finds a single edge's slot without walking the row.
+	slot, _ := g.EdgeIndex(2, 1)
+	fmt.Println(resistance[slot])
+	// Output:
+	// 0.75
+	// 0.25
+}
+
+func ExampleAdjacency() {
+	// One function for both graph kinds: the total weight leaving each node.
+	outWeight := func(g gonx.Adjacency) []float64 {
+		out := make([]float64, g.NumNodes())
+		for u := range out {
+			if g.Weighted() {
+				for _, w := range g.OutWeights(u) {
+					out[u] += w
+				}
+			} else {
+				out[u] = float64(len(g.OutNeighbors(u)))
+			}
+		}
+		return out
+	}
+
+	ub := gonx.NewBuilder(3)
+	ub.AddEdgeW(0, 1, 2)
+	ub.AddEdgeW(1, 2, 3)
+	db := gonx.NewDigraphBuilder(3)
+	db.AddEdgeW(0, 1, 2)
+	db.AddEdgeW(1, 2, 3)
+
+	fmt.Println(outWeight(ub.Build())) // an undirected edge leaves both ends
+	fmt.Println(outWeight(db.Build()))
+	// Output:
+	// [2 5 3]
+	// [2 3 0]
+}

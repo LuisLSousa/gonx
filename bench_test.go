@@ -87,3 +87,77 @@ func BenchmarkPageRank_10000(b *testing.B) {
 		_, _ = metrics.PageRank(g, 0.85, 1e-6, 100)
 	}
 }
+
+// randomBuilders returns an unweighted and a weighted Builder holding the same
+// 10k-node, 50k-edge random topology, so the two Build benchmarks below differ
+// only in the weight path.
+func randomBuilders() (plain, weighted *gonx.Builder) {
+	const n = 10_000
+	r := gonx.NewRand(1)
+	plain, weighted = gonx.NewBuilder(n), gonx.NewBuilder(n)
+	for plain.NumEdges() < 50_000 {
+		u, v := r.IntN(n), r.IntN(n)
+		if plain.AddEdge(u, v) {
+			weighted.AddEdgeW(u, v, r.Float64())
+		}
+	}
+	return plain, weighted
+}
+
+func BenchmarkBuild_10000(b *testing.B) {
+	plain, _ := randomBuilders()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = plain.Build()
+	}
+}
+
+// BenchmarkBuildWeighted measures the price of carrying weights through Build:
+// sorting packed (neighbor, position) keys and gathering, instead of sorting
+// the neighbor row in place.
+func BenchmarkBuildWeighted_10000(b *testing.B) {
+	_, weighted := randomBuilders()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = weighted.Build()
+	}
+}
+
+// BenchmarkNeighborIteration_10000 and BenchmarkWeightedNeighborIteration_10000
+// walk the same 10k-node graph, without and with the weight array, so the pair
+// is the receipt for what carrying weights costs in the inner loop of a
+// traversal. Both should be allocation-free.
+func BenchmarkNeighborIteration_10000(b *testing.B) {
+	plain, _ := randomBuilders()
+	g := plain.Build()
+	b.ResetTimer()
+	var sum int64
+	for i := 0; i < b.N; i++ {
+		for u := 0; u < g.NumNodes(); u++ {
+			for _, v := range g.Neighbors(u) {
+				sum += int64(v)
+			}
+		}
+	}
+	_ = sum
+}
+
+func BenchmarkWeightedNeighborIteration_10000(b *testing.B) {
+	_, weighted := randomBuilders()
+	g := weighted.Build()
+	b.ResetTimer()
+	var sum float64
+	for i := 0; i < b.N; i++ {
+		for u := 0; u < g.NumNodes(); u++ {
+			nbrs := g.Neighbors(u)
+			// Reslicing to len(nbrs) tells the compiler the two rows match and drops
+			// the per-edge bounds check. The graph here is weighted; on an
+			// unweighted one Weights is nil and this line would panic.
+			ws := g.Weights(u)[:len(nbrs)]
+			for j, v := range nbrs {
+				sum += ws[j] * float64(v)
+			}
+		}
+	}
+	_ = sum
+}

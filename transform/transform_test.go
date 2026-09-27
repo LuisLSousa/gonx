@@ -1,6 +1,7 @@
 package transform
 
 import (
+	"errors"
 	"reflect"
 	"sort"
 	"testing"
@@ -107,5 +108,100 @@ func TestShuffleIsIsomorphic(t *testing.T) {
 	h := Shuffle(g, gonx.NewRand(9))
 	if !reflect.DeepEqual(degreeSequence(g), degreeSequence(h)) {
 		t.Error("shuffle changed degree sequence")
+	}
+}
+
+// weightedGraph puts distinct random weights on a small-world topology and
+// returns them keyed by (min, max) endpoint.
+func weightedGraph(t *testing.T) (*gonx.Graph, map[[2]int]float64) {
+	t.Helper()
+	topo, err := generators.WattsStrogatz(40, 4, 0.3, gonx.NewRand(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := gonx.NewRand(3)
+	b := gonx.NewBuilder(topo.NumNodes())
+	want := map[[2]int]float64{}
+	for u, v := range topo.Edges() {
+		w := r.Float64()
+		b.AddEdgeW(u, v, w)
+		want[[2]int{u, v}] = w
+	}
+	return b.Build(), want
+}
+
+// checkMappedWeights asserts that got has exactly the edges of want, each
+// relabeled through perm and carrying its weight.
+func checkMappedWeights(t *testing.T, got *gonx.Graph, want map[[2]int]float64, perm []int) {
+	t.Helper()
+	if !got.Weighted() {
+		t.Fatal("result is unweighted")
+	}
+	if got.NumEdges() != len(want) {
+		t.Fatalf("NumEdges = %d, want %d", got.NumEdges(), len(want))
+	}
+	for k, w := range want {
+		u, v := k[0], k[1]
+		if perm != nil {
+			u, v = perm[u], perm[v]
+		}
+		if gw, ok := got.Weight(u, v); !ok || gw != w {
+			t.Errorf("Weight(%d, %d) = %v, %v; want %v, true", u, v, gw, ok, w)
+		}
+	}
+}
+
+func TestCopyKeepsWeights(t *testing.T) {
+	g, want := weightedGraph(t)
+	checkMappedWeights(t, Copy(g), want, nil)
+}
+
+func TestRelabelKeepsWeights(t *testing.T) {
+	g, want := weightedGraph(t)
+	n := g.NumNodes()
+	perm := make([]int, n)
+	for i := range perm {
+		perm[i] = n - 1 - i
+	}
+	out, err := RelabelNodes(g, perm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkMappedWeights(t, out, want, perm)
+}
+
+func TestShuffleKeepsWeights(t *testing.T) {
+	g, want := weightedGraph(t)
+	out, perm := ShuffleWithPerm(g, gonx.NewRand(9))
+	checkMappedWeights(t, out, want, perm)
+}
+
+func TestDoubleEdgeSwapRejectsWeighted(t *testing.T) {
+	g, _ := weightedGraph(t)
+	_, _, err := DoubleEdgeSwap(g, 10, 1000, gonx.NewRand(1))
+	if !errors.Is(err, gonx.ErrInvalidParam) {
+		t.Fatalf("err = %v, want ErrInvalidParam", err)
+	}
+}
+
+func TestTransformsKeepEdgelessGraphWeighted(t *testing.T) {
+	// A weighted graph with no edges is legal (NewWeightedBuilder, or every edge
+	// removed) and must come out of every transform still weighted.
+	g := gonx.NewWeightedBuilder(5).Build()
+	if !g.Weighted() {
+		t.Fatal("precondition: edgeless weighted graph is not weighted")
+	}
+	if !Copy(g).Weighted() {
+		t.Error("Copy dropped weightedness")
+	}
+	out, err := RelabelNodes(g, []int{4, 3, 2, 1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Weighted() {
+		t.Error("RelabelNodes dropped weightedness")
+	}
+	if !Shuffle(g, gonx.NewRand(1)).Weighted() {
+		t.Error("Shuffle dropped weightedness")
 	}
 }
