@@ -201,6 +201,7 @@ func (b *DigraphBuilder) Build() *Digraph {
 	outOffsets[n] = off
 	outData := make([]int32, b.m)
 	var outWeights []float64
+	negative := false
 	if b.w == nil {
 		for u := range n {
 			row := outData[outOffsets[u]:outOffsets[u+1]]
@@ -218,7 +219,9 @@ func (b *DigraphBuilder) Build() *Digraph {
 		for u := range n {
 			lo, hi := outOffsets[u], outOffsets[u+1]
 			ws := denseWeights(b.w[u], row[:len(b.out[u])])
-			copySorted(b.out[u], ws, outData[lo:hi], outWeights[lo:hi], keys)
+			if copySorted(b.out[u], ws, outData[lo:hi], outWeights[lo:hi], keys) {
+				negative = true
+			}
 		}
 	}
 
@@ -257,7 +260,7 @@ func (b *DigraphBuilder) Build() *Digraph {
 	return &Digraph{
 		outOffsets: outOffsets, outData: outData, outWeights: outWeights,
 		inOffsets: inOffsets, inData: inData, inWeights: inWeights,
-		negative: anyNegative(outWeights), m: b.m,
+		negative: negative, m: b.m,
 	}
 }
 

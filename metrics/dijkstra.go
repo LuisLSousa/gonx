@@ -103,8 +103,8 @@ func dijkstra(caller string, g gonx.Adjacency, src, target int, dist []float64, 
 // +Inf; that is an answer, not an error. The error is ErrNegativeWeight under
 // the same rule as Dijkstra. It panics if either node is out of range.
 //
-// The search stops as soon as dst is settled, so it expands only the nodes
-// closer to src than dst is. Each call still allocates and initializes O(n)
+// The search stops as soon as dst is settled, so it expands only nodes no
+// farther from src than dst is. Each call still allocates and initializes O(n)
 // scratch, however near dst is, which dominates when many point-to-point
 // queries run on a large graph. For many targets from one source, call
 // Dijkstra once and follow its prev tree instead.
@@ -112,6 +112,13 @@ func ShortestPath(g gonx.Adjacency, src, dst int) (path []int, length float64, e
 	n := g.NumNodes()
 	if dst < 0 || dst >= n {
 		panic(fmt.Sprintf("gonx/metrics: ShortestPath: target %d out of range [0, %d)", dst, n))
+	}
+	// Fail before paying for the scratch; the core repeats both checks.
+	if src < 0 || src >= n {
+		panic(fmt.Sprintf("gonx/metrics: ShortestPath: source %d out of range [0, %d)", src, n))
+	}
+	if g.HasNegativeWeight() {
+		return nil, 0, ErrNegativeWeight
 	}
 	dist := make([]float64, n)
 	prev := make([]int32, n)

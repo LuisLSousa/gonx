@@ -273,16 +273,6 @@ func moveWeight(ws []float64, i, last int) []float64 {
 	return ws
 }
 
-// anyNegative reports whether some weight is below zero. -0 is not.
-func anyNegative(ws []float64) bool {
-	for _, w := range ws {
-		if w < 0 {
-			return true
-		}
-	}
-	return false
-}
-
 // denseWeights expands a prefix weight list to the full length of its neighbor
 // list, writing into dst and padding the tail with 1.
 func denseWeights(ws []float64, dst []float64) []float64 {
@@ -298,17 +288,22 @@ func denseWeights(ws []float64, dst []float64) []float64 {
 // packed (neighbor, position) keys, a plain slices.Sort over uint64s, and then
 // gathers. Neighbors within a list are distinct and non-negative, so the high
 // word orders the keys by neighbor and the low word says where each weight came
-// from. keys is caller-provided scratch of at least len(nbrs).
-func copySorted(nbrs []int32, ws []float64, dst []int32, dstW []float64, keys []uint64) {
+// from. keys is caller-provided scratch of at least len(nbrs). It reports
+// whether any weight is below zero (-0 is not), so Build learns that without a
+// second pass over the weights.
+func copySorted(nbrs []int32, ws []float64, dst []int32, dstW []float64, keys []uint64) (negative bool) {
 	keys = keys[:len(nbrs)]
 	for i, v := range nbrs {
 		keys[i] = uint64(v)<<32 | uint64(i)
 	}
 	slices.Sort(keys)
 	for i, k := range keys {
+		w := ws[uint32(k)]
 		dst[i] = int32(k >> 32)
-		dstW[i] = ws[uint32(k)]
+		dstW[i] = w
+		negative = negative || w < 0
 	}
+	return negative
 }
 
 // Degree returns the number of neighbors of u. It panics if u is out of range.
@@ -361,12 +356,15 @@ func (b *Builder) Build() *Graph {
 	weights := make([]float64, total)
 	keys := make([]uint64, maxDeg)
 	row := make([]float64, maxDeg)
+	negative := false
 	for u := 0; u < n; u++ {
 		lo, hi := offsets[u], offsets[u+1]
 		ws := denseWeights(b.w[u], row[:len(b.adj[u])])
-		copySorted(b.adj[u], ws, data[lo:hi], weights[lo:hi], keys)
+		if copySorted(b.adj[u], ws, data[lo:hi], weights[lo:hi], keys) {
+			negative = true
+		}
 	}
-	return &Graph{offsets: offsets, data: data, weights: weights, negative: anyNegative(weights), m: b.m}
+	return &Graph{offsets: offsets, data: data, weights: weights, negative: negative, m: b.m}
 }
 
 // Graph is an immutable, undirected graph stored in Compressed Sparse Row form.
