@@ -481,3 +481,114 @@ func BenchmarkDijkstra_10000(b *testing.B) {
 		}
 	}
 }
+
+func TestShortestPath(t *testing.T) {
+	// 0-1-2-3 with unit weights and a heavier direct 0-3; 4-5 is a separate
+	// component, so 4 is unreachable from 0.
+	b := gonx.NewBuilder(6)
+	b.AddEdgeW(0, 1, 1)
+	b.AddEdgeW(1, 2, 1)
+	b.AddEdgeW(2, 3, 1)
+	b.AddEdgeW(0, 3, 3.5)
+	b.AddEdgeW(4, 5, 2)
+	g := b.Build()
+
+	cases := []struct {
+		src, dst int
+		path     []int
+		length   float64
+	}{
+		{0, 3, []int{0, 1, 2, 3}, 3},
+		{3, 0, []int{3, 2, 1, 0}, 3},
+		{0, 0, []int{0}, 0},
+		{4, 5, []int{4, 5}, 2},
+		{0, 4, nil, math.Inf(1)},
+	}
+	for _, c := range cases {
+		path, length, err := ShortestPath(g, c.src, c.dst)
+		if err != nil {
+			t.Fatalf("ShortestPath(%d, %d): %v", c.src, c.dst, err)
+		}
+		if !equalInts(path, c.path) || length != c.length {
+			t.Errorf("ShortestPath(%d, %d) = %v, %v; want %v, %v", c.src, c.dst, path, length, c.path, c.length)
+		}
+	}
+
+	// The negative-weight rule follows the search: the edge 1->2 is only seen
+	// once node 1 is expanded, which happens for target 2 but not for target 1,
+	// where the search stops as soon as 1 is settled.
+	d := gonx.NewDigraphBuilder(3)
+	d.AddEdgeW(0, 1, 1)
+	d.AddEdgeW(1, 2, -1)
+	dg := d.Build()
+	if _, _, err := ShortestPath(dg, 0, 2); !errors.Is(err, ErrNegativeWeight) {
+		t.Errorf("target beyond a negative edge: err = %v, want ErrNegativeWeight", err)
+	}
+	if path, _, err := ShortestPath(dg, 0, 1); err != nil || !equalInts(path, []int{0, 1}) {
+		t.Errorf("target before the negative edge: path %v, err %v; want [0 1], nil", path, err)
+	}
+
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("no panic for an out-of-range target")
+			}
+		}()
+		_, _, _ = ShortestPath(g, 0, 6)
+	}()
+}
+
+func equalInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestShortestPathMatchesDijkstra checks the early exit against a full run on
+// the fixtures: same length, a path that starts and ends where it should, and
+// edges whose weights add up to that length.
+func TestShortestPathMatchesDijkstra(t *testing.T) {
+	for _, name := range []string{"ws_undirected", "er_directed"} {
+		g := loadEdges(t, name+".edges")
+		n := g.NumNodes()
+		dist := make([]float64, n)
+		if err := Dijkstra(g, 0, dist, nil); err != nil {
+			t.Fatal(err)
+		}
+		for dst := 0; dst < n; dst += 3 {
+			path, length, err := ShortestPath(g, 0, dst)
+			if err != nil {
+				t.Fatalf("%s: ShortestPath(0, %d): %v", name, dst, err)
+			}
+			if math.IsInf(dist[dst], 1) {
+				if path != nil || !math.IsInf(length, 1) {
+					t.Errorf("%s: unreachable %d: path %v, length %v", name, dst, path, length)
+				}
+				continue
+			}
+			if math.Abs(length-dist[dst]) > 1e-9 {
+				t.Errorf("%s: ShortestPath(0, %d) length %v, Dijkstra says %v", name, dst, length, dist[dst])
+			}
+			if path[0] != 0 || path[len(path)-1] != dst {
+				t.Errorf("%s: path to %d runs %d..%d", name, dst, path[0], path[len(path)-1])
+			}
+			var sum float64
+			for i := 1; i < len(path); i++ {
+				w, ok := edgeWeight(g, path[i-1], path[i])
+				if !ok {
+					t.Fatalf("%s: path to %d uses the missing edge %d->%d", name, dst, path[i-1], path[i])
+				}
+				sum += w
+			}
+			if math.Abs(sum-length) > 1e-9 {
+				t.Errorf("%s: path to %d sums to %v, reported length %v", name, dst, sum, length)
+			}
+		}
+	}
+}
