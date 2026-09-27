@@ -521,9 +521,11 @@ func TestAccessorSlicesHaveNoSpareCapacity(t *testing.T) {
 			t.Errorf("Weights(%d): cap %d, len %d", u, cap(ws), len(ws))
 		}
 	}
-	_ = append(g.Weights(0), 99) // must allocate, not write into node 1's weights
-	if w, _ := g.Weight(1, 2); w != 2 {
-		t.Errorf("append on a view overwrote a neighbor's weight: Weight(1, 2) = %v", w)
+	// Node 1's row starts right after node 0's single slot, so an uncapped
+	// append here would land on the half-edge 1->0. It must allocate instead.
+	_ = append(g.Weights(0), 99)
+	if w, _ := g.Weight(1, 0); w != 1 {
+		t.Errorf("append on a view overwrote a neighbor's weight: Weight(1, 0) = %v", w)
 	}
 
 	d := NewDigraphBuilder(4)
