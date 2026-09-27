@@ -364,9 +364,9 @@ func TestDigraphUnweightedAndRoundTrip(t *testing.T) {
 	checkDigraphWeights(t, rt.Build(), map[[2]int]float64{{0, 1}: 2, {1, 2}: 3})
 }
 
-// outWeightSum is the kind of function Forward exists for: one body, both graph
+// outWeightSum is the kind of function Adjacency exists for: one body, both graph
 // kinds, unit weights when there are none.
-func outWeightSum(g Forward) float64 {
+func outWeightSum(g Adjacency) float64 {
 	var total float64
 	for u := 0; u < g.NumNodes(); u++ {
 		if g.Weighted() {
@@ -380,7 +380,7 @@ func outWeightSum(g Forward) float64 {
 	return total
 }
 
-func TestForwardCoversBothGraphKinds(t *testing.T) {
+func TestAdjacencyCoversBothGraphKinds(t *testing.T) {
 	ub := NewBuilder(3)
 	ub.AddEdgeW(0, 1, 2)
 	ub.AddEdgeW(1, 2, 3)
@@ -400,7 +400,7 @@ func TestForwardCoversBothGraphKinds(t *testing.T) {
 	}
 	g := ub.Build()
 	if !slices.Equal(g.OutNeighbors(1), g.Neighbors(1)) || !slices.Equal(g.OutWeights(1), g.Weights(1)) {
-		t.Error("Forward aliases disagree with Neighbors/Weights")
+		t.Error("Adjacency aliases disagree with Neighbors/Weights")
 	}
 }
 

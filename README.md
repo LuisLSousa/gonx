@@ -115,10 +115,10 @@ g := b.Build()
   links here" queries need. Built for
   [The Shape of Go](https://luislsousa.com/blog/the-shape-of-go), which maps
   all 2.6 million public Go modules and their 9.4 million dependency edges.
-- **One traversal interface.** `Forward` is the read-only view `Graph` and
+- **One traversal interface.** `Adjacency` is the read-only view `Graph` and
   `Digraph` share: node count, out-neighbors, out-weights. An algorithm that
-  only walks edges forward takes a `Forward` and runs on either kind from one
-  implementation. It is sealed to this package for now.
+  only walks edges forward takes an `Adjacency` and runs on either kind from
+  one implementation. It is sealed to this package for now.
 - **Reproducible randomness.** Every randomized operation takes an explicit
   `*math/rand/v2.Rand`. The same seed and parameters give a byte-identical graph. The package
   never touches a global RNG.
@@ -131,7 +131,7 @@ g := b.Build()
 
 | Package | Contents |
 |---|---|
-| `gonx` | `Graph`/`Digraph` (CSR, optional edge weights), `Builder`/`DigraphBuilder` (+ `NewWeighted*`), `Forward`, iterators, `NewRand` |
+| `gonx` | `Graph`/`Digraph` (CSR, optional edge weights), `Builder`/`DigraphBuilder` (+ `NewWeighted*`), `Adjacency`, iterators, `NewRand` |
 | `gonx/generators` | `WattsStrogatz`, `BarabasiAlbert`, `Complete`, `RandomAvgDegree`, `ErdosRenyi` |
 | `gonx/transform` | `DoubleEdgeSwap`, `RelabelNodes`, `Shuffle`, `Copy` |
 | `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS`, `PageRank`, `WeaklyConnectedComponents` |
@@ -169,7 +169,7 @@ operations on this workload, nothing broader.
 v1 focused on undirected, unweighted graphs; v1.1 added directed graphs
 (`Digraph`), `PageRank`, and `WeaklyConnectedComponents`, extracted from real
 usage mapping the full Go module dependency graph (2.6M nodes, 9.4M edges).
-Both graph kinds now carry optional edge weights and share the `Forward`
+Both graph kinds now carry optional edge weights and share the `Adjacency`
 traversal interface. Generic node labels, serialization, and community
 detection remain intentionally out of scope.
 

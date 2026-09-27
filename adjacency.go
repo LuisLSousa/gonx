@@ -1,11 +1,13 @@
 package gonx
 
-// Forward is the read-only, forward-traversal view that [Graph] and [Digraph]
-// share: how many nodes there are and, for each node, the edges leaving it
-// together with their weights when the graph has any. An algorithm that only
-// ever walks edges in their natural direction takes a Forward and runs on either
-// graph kind from a single implementation. On an undirected Graph the edges
-// leaving u are its neighbors, since every edge can be walked from either end.
+// Adjacency is the read-only view of a graph's outgoing edges that [Graph] and
+// [Digraph] share: how many nodes there are and, for each node, the edges
+// leaving it together with their weights when the graph has any. An algorithm
+// that only ever walks edges in their natural direction takes an Adjacency and
+// runs on either graph kind from a single implementation. On an undirected
+// Graph the edges leaving u are its neighbors, since every edge can be walked
+// from either end; on a Digraph only the out-side is part of the view, and the
+// in-lists stay on the concrete type.
 //
 // The contract, which both graph kinds honor and which algorithms rely on:
 //
@@ -20,23 +22,23 @@ package gonx
 //     spare capacity, and valid for as long as the graph is. They may be held
 //     across calls, and the graph may be read from several goroutines at once.
 //
-// Forward is sealed: only this package's types, and types embedding them,
+// Adjacency is sealed: only this package's types, and types embedding them,
 // implement it, so the method set can grow with the algorithms that consume it.
 // A later release may open it to other representations once that set has
 // settled.
-type Forward interface {
+type Adjacency interface {
 	NumNodes() int
 	OutNeighbors(u int) []int32
 	OutWeights(u int) []float64
 	Weighted() bool
 
-	forward() // seals the interface to this package
+	adjacency() // seals the interface to this package
 }
 
-func (*Graph) forward()   {}
-func (*Digraph) forward() {}
+func (*Graph) adjacency()   {}
+func (*Digraph) adjacency() {}
 
 var (
-	_ Forward = (*Graph)(nil)
-	_ Forward = (*Digraph)(nil)
+	_ Adjacency = (*Graph)(nil)
+	_ Adjacency = (*Digraph)(nil)
 )

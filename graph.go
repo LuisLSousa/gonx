@@ -15,9 +15,9 @@
 // given weights, through [Builder.AddEdgeW] or [NewWeightedBuilder]; a weighted
 // graph stores one float64 per edge in an array laid out exactly like the
 // adjacency, so the weight of Neighbors(u)[i] is Weights(u)[i], and an
-// unweighted graph stores no weight array. [Forward] is the read-only traversal
-// view Graph and Digraph share, for algorithms that only walk edges in their
-// natural direction.
+// unweighted graph stores no weight array. [Adjacency] is the read-only view of
+// each node's outgoing edges that Graph and Digraph share, for algorithms that
+// only walk edges in their natural direction.
 //
 // All randomized operations take an explicit *math/rand/v2.Rand so results are
 // fully reproducible; the package never touches a global RNG.
@@ -366,7 +366,7 @@ func (b *Builder) Build() *Graph {
 // [Builder.Build].
 //
 // Accessors that take a node ID (Degree, Neighbors, Weights, EdgeOffset,
-// NeighborsSeq, RandomNeighbor, and the [Forward] aliases) panic with a
+// NeighborsSeq, RandomNeighbor, and the [Adjacency] aliases) panic with a
 // descriptive message when the ID is outside [0, N); HasEdge, Weight and
 // EdgeIndex take an edge instead and report false for out-of-range endpoints.
 // Slices returned by the accessors are views into the graph's storage with no
@@ -508,11 +508,11 @@ func (g *Graph) EdgeIndex(u, v int) (slot int, ok bool) {
 	return int(g.offsets[u]) + i, true
 }
 
-// OutNeighbors is [Graph.Neighbors] under the name [Forward] uses. An undirected
+// OutNeighbors is [Graph.Neighbors] under the name [Adjacency] uses. An undirected
 // edge can be walked from either end, so every neighbor is a successor.
 func (g *Graph) OutNeighbors(u int) []int32 { return g.Neighbors(u) }
 
-// OutWeights is [Graph.Weights] under the name [Forward] uses.
+// OutWeights is [Graph.Weights] under the name [Adjacency] uses.
 func (g *Graph) OutWeights(u int) []float64 { return g.Weights(u) }
 
 // RandomNeighbor returns a uniformly random neighbor of u. ok is false when u is

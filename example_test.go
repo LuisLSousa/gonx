@@ -137,9 +137,9 @@ func ExampleGraph_EdgeOffset() {
 	// 0.25
 }
 
-func ExampleForward() {
+func ExampleAdjacency() {
 	// One function for both graph kinds: the total weight leaving each node.
-	outWeight := func(g gonx.Forward) []float64 {
+	outWeight := func(g gonx.Adjacency) []float64 {
 		out := make([]float64, g.NumNodes())
 		for u := range out {
 			if g.Weighted() {
