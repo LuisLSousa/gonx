@@ -8,11 +8,13 @@ import (
 	"github.com/LuisLSousa/gonx"
 )
 
-// ErrNegativeWeight is returned by Dijkstra when the part of the graph it can
-// reach contains an edge with a negative weight. Dijkstra's algorithm is only
+// ErrNegativeWeight is returned by Dijkstra and ShortestPath when the graph has
+// an edge with a negative weight, wherever it is. Dijkstra's algorithm is only
 // correct for non-negative weights, and a negative one is almost always a data
 // error rather than an intended shortest-path problem, so the call fails
-// instead of returning distances that are silently wrong.
+// instead of returning distances that are silently wrong. The check reads
+// [gonx.Adjacency.HasNegativeWeight] before any work is done, so it does not
+// depend on which part of the graph a search happens to visit.
 var ErrNegativeWeight = errors.New("gonx/metrics: negative edge weight")
 
 // Dijkstra fills dist with the length of the shortest path from src to every
@@ -29,33 +31,35 @@ var ErrNegativeWeight = errors.New("gonx/metrics: negative edge weight")
 // unweighted should prefer BreadthFirst, which is cheaper. Where several
 // shortest paths tie, which one prev records is not specified.
 //
-// Dijkstra returns ErrNegativeWeight if, and only if, an edge with a negative
-// weight leaves a node that is reachable from src, src included. dist and prev
-// are then partially filled and must not be used. Weights are finite, but a
-// path length can still overflow to +Inf; a node reached only by such paths is
-// reported as unreachable, with dist +Inf and prev -1.
+// Dijkstra returns ErrNegativeWeight if, and only if, g.HasNegativeWeight(),
+// and leaves dist and prev untouched. Weights are finite, but a path length can
+// still overflow to +Inf; a node reached only by such paths is reported as
+// unreachable, with dist +Inf and prev -1.
 //
 // It panics if src is out of range, or if dist or a non-nil prev does not have
 // length g.NumNodes(). It runs in O((n + m) log n) time and allocates O(n)
 // scratch per call.
 func Dijkstra(g gonx.Adjacency, src int, dist []float64, prev []int32) error {
-	return dijkstra(g, src, -1, dist, prev)
+	return dijkstra("Dijkstra", g, src, -1, dist, prev)
 }
 
 // dijkstra is the shared core of Dijkstra and ShortestPath. When target is a
 // node rather than -1, the search stops as soon as that node is settled, which
 // leaves dist and prev correct for every settled node and for target itself
-// but not beyond.
-func dijkstra(g gonx.Adjacency, src, target int, dist []float64, prev []int32) error {
+// but not beyond. caller names the exported function in panic messages.
+func dijkstra(caller string, g gonx.Adjacency, src, target int, dist []float64, prev []int32) error {
 	n := g.NumNodes()
 	if src < 0 || src >= n {
-		panic(fmt.Sprintf("gonx/metrics: Dijkstra: source %d out of range [0, %d)", src, n))
+		panic(fmt.Sprintf("gonx/metrics: %s: source %d out of range [0, %d)", caller, src, n))
 	}
 	if len(dist) != n {
-		panic(fmt.Sprintf("gonx/metrics: Dijkstra: dist has length %d, want %d", len(dist), n))
+		panic(fmt.Sprintf("gonx/metrics: %s: dist has length %d, want %d", caller, len(dist), n))
 	}
 	if prev != nil && len(prev) != n {
-		panic(fmt.Sprintf("gonx/metrics: Dijkstra: prev has length %d, want %d", len(prev), n))
+		panic(fmt.Sprintf("gonx/metrics: %s: prev has length %d, want %d", caller, len(prev), n))
+	}
+	if g.HasNegativeWeight() {
+		return ErrNegativeWeight
 	}
 	for i := range dist {
 		dist[i] = math.Inf(1)
@@ -79,9 +83,6 @@ func dijkstra(g gonx.Adjacency, src, target int, dist []float64, prev []int32) e
 			if ws != nil {
 				w = ws[i]
 			}
-			if w < 0 {
-				return ErrNegativeWeight
-			}
 			// Strict comparison: with <= a zero-weight edge between two
 			// settled nodes would rewrite prev into a cycle.
 			v := int(v32)
@@ -100,11 +101,12 @@ func dijkstra(g gonx.Adjacency, src, target int, dist []float64, prev []int32) e
 // ShortestPath returns the nodes of a shortest path from src to dst, both
 // included, and its length. When dst is unreachable, path is nil and length is
 // +Inf; that is an answer, not an error. The error is ErrNegativeWeight under
-// the same rule as Dijkstra, restricted to the part of the graph the search
-// visited before reaching dst. It panics if either node is out of range.
+// the same rule as Dijkstra. It panics if either node is out of range.
 //
-// The search stops as soon as dst is settled, so a nearby target costs far less
-// than a full single-source run. For many targets from one source, call
+// The search stops as soon as dst is settled, so it expands only the nodes
+// closer to src than dst is. Each call still allocates and initializes O(n)
+// scratch, however near dst is, which dominates when many point-to-point
+// queries run on a large graph. For many targets from one source, call
 // Dijkstra once and follow its prev tree instead.
 func ShortestPath(g gonx.Adjacency, src, dst int) (path []int, length float64, err error) {
 	n := g.NumNodes()
@@ -113,7 +115,7 @@ func ShortestPath(g gonx.Adjacency, src, dst int) (path []int, length float64, e
 	}
 	dist := make([]float64, n)
 	prev := make([]int32, n)
-	if err := dijkstra(g, src, dst, dist, prev); err != nil {
+	if err := dijkstra("ShortestPath", g, src, dst, dist, prev); err != nil {
 		return nil, 0, err
 	}
 	if math.IsInf(dist[dst], 1) {
@@ -141,7 +143,10 @@ func ShortestPath(g gonx.Adjacency, src, dst int) (path []int, length float64, e
 // its whole footprint: that is the "O(n) scratch" in Dijkstra's contract, and
 // two allocations per call. container/heap is not used because its interface
 // boxes every element and dispatches every comparison dynamically, both of
-// which show up on graphs with millions of edges.
+// which show up on graphs with millions of edges. The index was also measured
+// against a lazy heap, which pushes a node again on every improvement and skips
+// stale entries on pop: the indexed heap was faster on graphs that fit in
+// cache and level with it on larger ones.
 type nodeHeap struct {
 	key   []float64 // dist, owned by the caller
 	nodes []int32   // heap order

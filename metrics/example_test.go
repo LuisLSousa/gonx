@@ -119,9 +119,15 @@ func ExampleShortestPath() {
 	b.AddEdgeW(0, 3, 5)
 	g := b.Build()
 
-	path, length, _ := metrics.ShortestPath(g, 0, 3)
+	path, length, err := metrics.ShortestPath(g, 0, 3)
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(path, length)
-	path, length, _ = metrics.ShortestPath(g, 0, 4)
+	path, length, err = metrics.ShortestPath(g, 0, 4)
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(path == nil, length)
 	// Output:
 	// [0 1 2 3] 3

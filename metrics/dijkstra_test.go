@@ -8,7 +8,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/LuisLSousa/gonx"
@@ -286,39 +288,31 @@ func TestDijkstraUnweightedEqualsBreadthFirst(t *testing.T) {
 }
 
 func TestDijkstraNegativeWeight(t *testing.T) {
-	// 0->1 weighs 1 and 1->0 weighs -5, so the negative edge leaves node 1.
-	// From 0 it is reachable and the call must fail even though 0, the only
-	// node it leads to, is already settled by then; from 1 it leaves the
-	// source itself; from 3 it is two hops away through 0.
+	// The rule is about the graph, not the search: every source fails,
+	// including 2, which reaches nothing, and 0, from which the negative edge
+	// is unreachable. dist and prev must come back untouched.
 	b := gonx.NewDigraphBuilder(4)
 	b.AddEdgeW(0, 1, 1)
-	b.AddEdgeW(1, 0, -5)
+	b.AddEdgeW(2, 0, -3)
 	b.AddEdgeW(3, 0, 1)
 	g := b.Build()
 	dist := make([]float64, 4)
-	for _, src := range []int{0, 1, 3} {
-		if err := Dijkstra(g, src, dist, nil); !errors.Is(err, ErrNegativeWeight) {
-			t.Errorf("from %d, which reaches the negative edge: err = %v, want ErrNegativeWeight", src, err)
+	prev := make([]int32, 4)
+	for src := range 4 {
+		poison(dist, prev)
+		if err := Dijkstra(g, src, dist, prev); !errors.Is(err, ErrNegativeWeight) {
+			t.Errorf("from %d: err = %v, want ErrNegativeWeight", src, err)
+		}
+		for v := range dist {
+			if !math.IsNaN(dist[v]) || prev[v] != 99 {
+				t.Fatalf("from %d: dist %v prev %v were written to", src, dist, prev)
+			}
 		}
 	}
-	// A negative edge that leaves an unreachable node is never seen.
-	c := gonx.NewDigraphBuilder(3)
-	c.AddEdgeW(0, 1, 1)
-	c.AddEdgeW(2, 0, -3)
-	cg := c.Build()
-	poison(dist[:3], nil)
-	if err := Dijkstra(cg, 0, dist[:3], nil); err != nil {
-		t.Errorf("negative edge behind the source: err = %v, want nil", err)
-	}
-	if dist[0] != 0 || dist[1] != 1 || !math.IsInf(dist[2], 1) {
-		t.Errorf("negative edge behind the source: dist = %v, want [0 1 +Inf]", dist[:3])
-	}
-	// Undirected: a negative edge is reachable from both of its ends.
 	u := gonx.NewBuilder(3)
 	u.AddEdgeW(0, 1, 2)
 	u.AddEdgeW(1, 2, -1)
-	ug := u.Build()
-	if err := Dijkstra(ug, 0, dist[:3], nil); !errors.Is(err, ErrNegativeWeight) {
+	if err := Dijkstra(u.Build(), 0, dist[:3], nil); !errors.Is(err, ErrNegativeWeight) {
 		t.Errorf("undirected negative edge: err = %v, want ErrNegativeWeight", err)
 	}
 }
@@ -419,16 +413,25 @@ func TestDijkstraAgainstBellmanFord(t *testing.T) {
 func TestDijkstraPanics(t *testing.T) {
 	g := gonx.NewBuilder(3).Build()
 	cases := map[string]func(){
-		"source too large": func() { _ = Dijkstra(g, 3, make([]float64, 3), nil) },
-		"negative source":  func() { _ = Dijkstra(g, -1, make([]float64, 3), nil) },
-		"short dist":       func() { _ = Dijkstra(g, 0, make([]float64, 2), nil) },
-		"short prev":       func() { _ = Dijkstra(g, 0, make([]float64, 3), make([]int32, 2)) },
+		"source too large":     func() { _ = Dijkstra(g, 3, make([]float64, 3), nil) },
+		"negative source":      func() { _ = Dijkstra(g, -1, make([]float64, 3), nil) },
+		"short dist":           func() { _ = Dijkstra(g, 0, make([]float64, 2), nil) },
+		"short prev":           func() { _ = Dijkstra(g, 0, make([]float64, 3), make([]int32, 2)) },
+		"ShortestPath: source": func() { _, _, _ = ShortestPath(g, 3, 0) },
+		"BreadthFirst: source": func() { BreadthFirst(g, 3, make([]int32, 3)) },
+		"BreadthFirst: dist":   func() { BreadthFirst(g, 0, make([]int32, 4)) },
 	}
 	for name, fn := range cases {
 		func() {
 			defer func() {
-				if recover() == nil {
+				r := recover()
+				if r == nil {
 					t.Errorf("%s: no panic", name)
+					return
+				}
+				// Cases named after a function must blame that function.
+				if caller, _, ok := strings.Cut(name, ":"); ok && !strings.Contains(fmt.Sprint(r), caller+":") {
+					t.Errorf("%s: panic %q does not name %s", name, r, caller)
 				}
 			}()
 			fn()
@@ -509,23 +512,20 @@ func TestShortestPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ShortestPath(%d, %d): %v", c.src, c.dst, err)
 		}
-		if !equalInts(path, c.path) || length != c.length {
+		if !slices.Equal(path, c.path) || length != c.length {
 			t.Errorf("ShortestPath(%d, %d) = %v, %v; want %v, %v", c.src, c.dst, path, length, c.path, c.length)
 		}
 	}
 
-	// The negative-weight rule follows the search: the edge 1->2 is only seen
-	// once node 1 is expanded, which happens for target 2 but not for target 1,
-	// where the search stops as soon as 1 is settled.
+	// A search that stops early never expands node 2, so the negative edge
+	// 2->1 would go unseen and [0 1] at length 1 would come back, while the
+	// true shortest path is [0 2 1] at -5. The up-front check refuses instead.
 	d := gonx.NewDigraphBuilder(3)
 	d.AddEdgeW(0, 1, 1)
-	d.AddEdgeW(1, 2, -1)
-	dg := d.Build()
-	if _, _, err := ShortestPath(dg, 0, 2); !errors.Is(err, ErrNegativeWeight) {
-		t.Errorf("target beyond a negative edge: err = %v, want ErrNegativeWeight", err)
-	}
-	if path, _, err := ShortestPath(dg, 0, 1); err != nil || !equalInts(path, []int{0, 1}) {
-		t.Errorf("target before the negative edge: path %v, err %v; want [0 1], nil", path, err)
+	d.AddEdgeW(0, 2, 5)
+	d.AddEdgeW(2, 1, -10)
+	if path, _, err := ShortestPath(d.Build(), 0, 1); !errors.Is(err, ErrNegativeWeight) {
+		t.Errorf("negative edge off the explored region: path %v, err %v; want ErrNegativeWeight", path, err)
 	}
 
 	func() {
@@ -536,18 +536,6 @@ func TestShortestPath(t *testing.T) {
 		}()
 		_, _, _ = ShortestPath(g, 0, 6)
 	}()
-}
-
-func equalInts(a, b []int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // TestShortestPathMatchesDijkstra checks the early exit against a full run on
