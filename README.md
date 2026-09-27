@@ -103,11 +103,12 @@ g := b.Build()
   via binary search.
 - **Mutable `Builder`.** Add/remove nodes and edges, then `Build()` to freeze.
   The result is always simple (no self-loops or duplicate edges).
-- **Optional edge weights.** `AddEdgeW` puts a `float64` on an edge. Weights are
+- **Optional edge weights.** `AddEdgeW` puts a `float64` on an edge, or
+  `NewWeightedBuilder` makes every edge weighted from the start. Weights are
   stored in an array laid out exactly like the adjacency, so `Weights(u)[i]`
-  belongs to `Neighbors(u)[i]` and an unweighted graph stores nothing extra.
-  `EdgeOffset(u)` exposes that layout, so per-edge data of your own can live in
-  a plain slice indexed the same way.
+  belongs to `Neighbors(u)[i]`, and an unweighted graph stores no weight array.
+  `EdgeOffset` and `EdgeIndex` expose that layout, so per-edge data of your own
+  can live in a plain slice indexed the same way.
 - **Directed graphs.** `Digraph`/`DigraphBuilder` mirror the undirected pair, with
   the CSR stored in *both* directions: `OutNeighbors(u)` and `InNeighbors(u)` are
   equally cheap, which is what reverse-flow algorithms like PageRank and "who
@@ -115,9 +116,9 @@ g := b.Build()
   [The Shape of Go](https://luislsousa.com/blog/the-shape-of-go), which maps
   all 2.6 million public Go modules and their 9.4 million dependency edges.
 - **One traversal interface.** `Forward` is the read-only view `Graph` and
-  `Digraph` share: node count, out-neighbors, out-weights. Algorithms that only
-  walk edges forward take a `Forward` and run on either kind from one
-  implementation, and any representation of your own can implement it.
+  `Digraph` share: node count, out-neighbors, out-weights. An algorithm that
+  only walks edges forward takes a `Forward` and runs on either kind from one
+  implementation. It is sealed to this package for now.
 - **Reproducible randomness.** Every randomized operation takes an explicit
   `*math/rand/v2.Rand`. The same seed and parameters give a byte-identical graph. The package
   never touches a global RNG.
@@ -130,7 +131,7 @@ g := b.Build()
 
 | Package | Contents |
 |---|---|
-| `gonx` | `Graph`/`Digraph` (CSR, optional edge weights), `Builder`/`DigraphBuilder`, `Forward`, iterators, `NewRand` |
+| `gonx` | `Graph`/`Digraph` (CSR, optional edge weights), `Builder`/`DigraphBuilder` (+ `NewWeighted*`), `Forward`, iterators, `NewRand` |
 | `gonx/generators` | `WattsStrogatz`, `BarabasiAlbert`, `Complete`, `RandomAvgDegree`, `ErdosRenyi` |
 | `gonx/transform` | `DoubleEdgeSwap`, `RelabelNodes`, `Shuffle`, `Copy` |
 | `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS`, `PageRank`, `WeaklyConnectedComponents` |
@@ -168,9 +169,9 @@ operations on this workload, nothing broader.
 v1 focused on undirected, unweighted graphs; v1.1 added directed graphs
 (`Digraph`), `PageRank`, and `WeaklyConnectedComponents`, extracted from real
 usage mapping the full Go module dependency graph (2.6M nodes, 9.4M edges).
-Since then both graph kinds carry optional edge weights and share the `Forward`
-traversal interface; weighted shortest paths, bridges and articulation points,
-and betweenness centrality are being built on them for v1.2. Generic node
+Both graph kinds now carry optional edge weights and share the `Forward`
+traversal interface. Next on the same foundation: weighted shortest paths,
+bridges and articulation points, and betweenness centrality. Generic node
 labels, serialization, and community detection remain intentionally out of
 scope.
 

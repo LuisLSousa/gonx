@@ -123,17 +123,35 @@ func BenchmarkBuildWeighted_10000(b *testing.B) {
 	}
 }
 
-// BenchmarkWeightedNeighborIteration walks neighbors and weights together, the
-// inner loop of any weighted traversal; it should be allocation-free.
-func BenchmarkWeightedNeighborIteration(b *testing.B) {
+// BenchmarkNeighborIteration_10000 and BenchmarkWeightedNeighborIteration_10000
+// walk the same 10k-node graph, without and with the weight array, so the pair
+// is the receipt for what carrying weights costs in the inner loop of a
+// traversal. Both should be allocation-free.
+func BenchmarkNeighborIteration_10000(b *testing.B) {
+	plain, _ := randomBuilders()
+	g := plain.Build()
+	b.ResetTimer()
+	var sum int64
+	for i := 0; i < b.N; i++ {
+		for u := 0; u < g.NumNodes(); u++ {
+			for _, v := range g.Neighbors(u) {
+				sum += int64(v)
+			}
+		}
+	}
+	_ = sum
+}
+
+func BenchmarkWeightedNeighborIteration_10000(b *testing.B) {
 	_, weighted := randomBuilders()
 	g := weighted.Build()
 	b.ResetTimer()
 	var sum float64
 	for i := 0; i < b.N; i++ {
 		for u := 0; u < g.NumNodes(); u++ {
-			ws := g.Weights(u)
-			for j, v := range g.Neighbors(u) {
+			nbrs := g.Neighbors(u)
+			ws := g.Weights(u)[:len(nbrs)] // tells the compiler the two rows match; drops the per-edge bounds check
+			for j, v := range nbrs {
 				sum += ws[j] * float64(v)
 			}
 		}

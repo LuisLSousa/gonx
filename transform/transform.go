@@ -31,6 +31,9 @@ func RelabelNodes(g *gonx.Graph, perm []int) (*gonx.Graph, error) {
 		seen[p] = true
 	}
 	b := gonx.NewBuilder(n)
+	if g.Weighted() {
+		b = gonx.NewWeightedBuilder(n) // so an edgeless weighted graph stays weighted
+	}
 	for u := 0; u < n; u++ {
 		nbrs, ws := g.Neighbors(u), g.Weights(u)
 		for i, v := range nbrs {
@@ -82,15 +85,17 @@ func ShuffleWithPerm(g *gonx.Graph, r *rand.Rand) (*gonx.Graph, []int) {
 // otherwise randomized wiring.
 //
 // Weighted graphs are rejected with an error wrapping [gonx.ErrInvalidParam]. A
-// rewired edge has no well-defined weight, and inventing one (networkx quietly
-// drops the attributes) would hide the problem from the caller. Build the null
-// model from the unweighted topology and reattach weights deliberately.
+// rewired edge has no well-defined weight, and inventing one would hide the
+// problem from the caller; networkx leaves the rewired edges without attributes
+// while the untouched ones keep theirs, which is a different kind of surprise.
+// Build the null model from the unweighted topology and reattach weights
+// deliberately.
 func DoubleEdgeSwap(g *gonx.Graph, nswap, maxTries int, r *rand.Rand) (*gonx.Graph, int, error) {
 	if nswap < 0 {
 		return nil, 0, fmt.Errorf("%w: nswap must be >= 0, got %d", gonx.ErrInvalidParam, nswap)
 	}
 	if g.Weighted() {
-		return nil, 0, fmt.Errorf("%w: DoubleEdgeSwap needs an unweighted graph; rewired edges have no weight to carry", gonx.ErrInvalidParam)
+		return nil, 0, fmt.Errorf("%w: weighted graph; rewired edges would have no weight", gonx.ErrInvalidParam)
 	}
 	if g.NumEdges() < 2 {
 		return Copy(g), 0, nil

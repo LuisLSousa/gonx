@@ -1,6 +1,7 @@
 package gonx
 
 import (
+	"bytes"
 	"math"
 	"slices"
 	"testing"
@@ -148,7 +149,7 @@ func TestBuildWeightsAlignedRandom(t *testing.T) {
 			added = append(added, edgeKey(u, v))
 		}
 	}
-	// Remove a batch to exercise swapDelete on both lists of both endpoints.
+	// Remove a batch so unlink and moveWeight run on both lists of both endpoints.
 	for _, k := range added[:300] {
 		if !b.RemoveEdge(k[0], k[1]) {
 			t.Fatalf("RemoveEdge%v = false", k)
@@ -227,6 +228,7 @@ func checkDigraphWeights(t *testing.T, g *Digraph, want map[[2]int]float64) {
 	if g.NumEdges() != len(want) {
 		t.Fatalf("NumEdges = %d, want %d", g.NumEdges(), len(want))
 	}
+	inTotal := 0
 	for u := 0; u < g.NumNodes(); u++ {
 		out, ows := g.OutNeighbors(u), g.OutWeights(u)
 		if (ows == nil) == g.Weighted() {
@@ -248,9 +250,13 @@ func checkDigraphWeights(t *testing.T, g *Digraph, want map[[2]int]float64) {
 			}
 		}
 		in, iws := g.InNeighbors(u), g.InWeights(u)
+		if (iws == nil) == g.Weighted() {
+			t.Fatalf("InWeights(%d) = %v on a graph with Weighted() = %v", u, iws, g.Weighted())
+		}
 		if iws != nil && len(iws) != len(in) {
 			t.Fatalf("InWeights(%d) has length %d, InNeighbors %d", u, len(iws), len(in))
 		}
+		inTotal += len(in)
 		for i, src := range in {
 			w, ok := want[[2]int{int(src), u}]
 			if !ok {
@@ -260,6 +266,9 @@ func checkDigraphWeights(t *testing.T, g *Digraph, want map[[2]int]float64) {
 				t.Errorf("InWeights(%d)[%d] (edge from %d) = %v, want %v", u, i, src, iws[i], w)
 			}
 		}
+	}
+	if inTotal != g.NumEdges() {
+		t.Fatalf("in-lists hold %d entries, NumEdges is %d", inTotal, g.NumEdges())
 	}
 }
 
@@ -406,47 +415,225 @@ func TestWeightAccessorsPanicOutOfRange(t *testing.T) {
 	mustPanic(t, "InEdgeOffset", func() { d.InEdgeOffset(-1) })
 }
 
-// FuzzWeightsAligned drives both builders through a random script of weighted
-// adds, unweighted adds, and removals, then checks that Build kept every weight
-// with its edge in every list it appears in.
-func FuzzWeightsAligned(f *testing.F) {
-	f.Add(uint64(1), uint(40))
-	f.Add(uint64(42), uint(300))
-	f.Add(uint64(7), uint(0))
-	f.Fuzz(func(t *testing.T, seed uint64, steps uint) {
-		if steps > 2000 {
-			t.Skip()
+func TestNewWeightedBuilder(t *testing.T) {
+	b := NewWeightedBuilder(3)
+	if !b.Weighted() {
+		t.Fatal("NewWeightedBuilder is not weighted")
+	}
+	empty := b.Build()
+	if !empty.Weighted() || empty.NumEdges() != 0 {
+		t.Fatalf("edgeless build: Weighted = %v, NumEdges = %d", empty.Weighted(), empty.NumEdges())
+	}
+	if ws := empty.Weights(0); ws == nil || len(ws) != 0 {
+		t.Errorf("Weights(0) on an edgeless weighted graph = %v, want empty non-nil", ws)
+	}
+	b.AddEdge(0, 1) // unweighted add on a weighted builder: weight 1
+	b.AddEdgeW(1, 2, 7)
+	checkWeights(t, b.Build(), map[[2]int]float64{{0, 1}: 1, {1, 2}: 7})
+	if !NewWeightedBuilder(0).Weighted() {
+		t.Error("NewWeightedBuilder(0) is not weighted")
+	}
+
+	d := NewWeightedDigraphBuilder(3)
+	if !d.Weighted() || !d.Build().Weighted() {
+		t.Fatal("NewWeightedDigraphBuilder or its edgeless build is not weighted")
+	}
+	d.AddEdgeUnchecked(0, 1)
+	d.AddEdgeW(1, 2, 7)
+	checkDigraphWeights(t, d.Build(), map[[2]int]float64{{0, 1}: 1, {1, 2}: 7})
+}
+
+func TestDigraphAddNodeAndUncheckedAfterSwitch(t *testing.T) {
+	b := NewDigraphBuilder(2)
+	b.AddEdgeW(0, 1, 4)
+	v := b.AddNode()
+	if !b.AddEdgeW(1, v, 5) || !b.AddEdgeUnchecked(v, 0) {
+		t.Fatal("edges involving a node added after the switch rejected")
+	}
+	checkDigraphWeights(t, b.Build(), map[[2]int]float64{{0, 1}: 4, {1, 2}: 5, {2, 0}: 1})
+}
+
+func TestEdgeIndex(t *testing.T) {
+	b := NewBuilder(4)
+	b.AddEdgeW(0, 1, 10)
+	b.AddEdgeW(0, 2, 20)
+	b.AddEdgeW(2, 3, 23)
+	g := b.Build()
+	for u := 0; u < g.NumNodes(); u++ {
+		for i, v := range g.Neighbors(u) {
+			slot, ok := g.EdgeIndex(u, int(v))
+			if !ok || slot != g.EdgeOffset(u)+i {
+				t.Errorf("EdgeIndex(%d, %d) = %d, %v; want %d, true", u, v, slot, ok, g.EdgeOffset(u)+i)
+			}
+			if w, _ := g.Weight(u, int(v)); g.Weights(u)[slot-g.EdgeOffset(u)] != w {
+				t.Errorf("slot %d does not address the weight of {%d, %d}", slot, u, v)
+			}
 		}
-		r := NewRand(seed)
-		const n = 16
-		ub, db := NewBuilder(n), NewDigraphBuilder(n)
+	}
+	for _, e := range [][2]int{{1, 2}, {3, 0}, {0, 0}, {0, 4}, {-1, 1}} {
+		if _, ok := g.EdgeIndex(e[0], e[1]); ok {
+			t.Errorf("EdgeIndex%v reported an edge", e)
+		}
+	}
+
+	d := NewDigraphBuilder(4)
+	d.AddEdgeW(0, 1, 1)
+	d.AddEdgeW(2, 1, 21)
+	d.AddEdgeW(1, 3, 13)
+	dg := d.Build()
+	for u := 0; u < dg.NumNodes(); u++ {
+		for i, v := range dg.OutNeighbors(u) {
+			if slot, ok := dg.EdgeIndex(u, int(v)); !ok || slot != dg.OutEdgeOffset(u)+i {
+				t.Errorf("EdgeIndex(%d, %d) = %d, %v; want %d, true", u, v, slot, ok, dg.OutEdgeOffset(u)+i)
+			}
+		}
+		for i, src := range dg.InNeighbors(u) {
+			slot, ok := dg.InEdgeIndex(int(src), u)
+			if !ok || slot != dg.InEdgeOffset(u)+i {
+				t.Errorf("InEdgeIndex(%d, %d) = %d, %v; want %d, true", src, u, slot, ok, dg.InEdgeOffset(u)+i)
+			}
+			if w, _ := dg.Weight(int(src), u); dg.InWeights(u)[slot-dg.InEdgeOffset(u)] != w {
+				t.Errorf("in slot %d does not address the weight of %d->%d", slot, src, u)
+			}
+		}
+	}
+	if _, ok := dg.EdgeIndex(1, 0); ok {
+		t.Error("EdgeIndex reported the reverse of an existing edge")
+	}
+	if _, ok := dg.InEdgeIndex(1, 0); ok {
+		t.Error("InEdgeIndex reported the reverse of an existing edge")
+	}
+}
+
+// TestAccessorSlicesHaveNoSpareCapacity guards against append on a returned
+// view silently overwriting the next node's data.
+func TestAccessorSlicesHaveNoSpareCapacity(t *testing.T) {
+	b := NewBuilder(4)
+	b.AddEdgeW(0, 1, 1)
+	b.AddEdgeW(1, 2, 2)
+	b.AddEdgeW(2, 3, 3)
+	g := b.Build()
+	for u := 0; u < 3; u++ { // node 3 is last; its view has no successor to clobber
+		if nbrs := g.Neighbors(u); cap(nbrs) != len(nbrs) {
+			t.Errorf("Neighbors(%d): cap %d, len %d", u, cap(nbrs), len(nbrs))
+		}
+		if ws := g.Weights(u); cap(ws) != len(ws) {
+			t.Errorf("Weights(%d): cap %d, len %d", u, cap(ws), len(ws))
+		}
+	}
+	_ = append(g.Weights(0), 99) // must allocate, not write into node 1's weights
+	if w, _ := g.Weight(1, 2); w != 2 {
+		t.Errorf("append on a view overwrote a neighbor's weight: Weight(1, 2) = %v", w)
+	}
+
+	d := NewDigraphBuilder(4)
+	d.AddEdgeW(0, 1, 1)
+	d.AddEdgeW(1, 2, 2)
+	d.AddEdgeW(2, 3, 3)
+	dg := d.Build()
+	for u := 0; u < 3; u++ {
+		for name, sl := range map[string]int{
+			"OutNeighbors": cap(dg.OutNeighbors(u)) - len(dg.OutNeighbors(u)),
+			"OutWeights":   cap(dg.OutWeights(u)) - len(dg.OutWeights(u)),
+			"InNeighbors":  cap(dg.InNeighbors(u+1)) - len(dg.InNeighbors(u+1)),
+			"InWeights":    cap(dg.InWeights(u+1)) - len(dg.InWeights(u+1)),
+		} {
+			if sl != 0 {
+				t.Errorf("%s at node %d has %d spare capacity", name, u, sl)
+			}
+		}
+	}
+}
+
+// checkPrefix is the white-box invariant the prefix representation rests on: a
+// weight list never outgrows its neighbor list, and a weighted builder has a
+// weight list slot for every node.
+func checkPrefix(t *testing.T, ub *Builder, db *DigraphBuilder) {
+	t.Helper()
+	if ub.w != nil {
+		if len(ub.w) != len(ub.adj) {
+			t.Fatalf("Builder: %d weight lists for %d nodes", len(ub.w), len(ub.adj))
+		}
+		for u := range ub.adj {
+			if len(ub.w[u]) > len(ub.adj[u]) {
+				t.Fatalf("Builder node %d: weight list %d longer than neighbor list %d", u, len(ub.w[u]), len(ub.adj[u]))
+			}
+		}
+	}
+	if db.w != nil {
+		if len(db.w) != len(db.out) {
+			t.Fatalf("DigraphBuilder: %d weight lists for %d nodes", len(db.w), len(db.out))
+		}
+		for u := range db.out {
+			if len(db.w[u]) > len(db.out[u]) {
+				t.Fatalf("DigraphBuilder node %d: weight list %d longer than out-list %d", u, len(db.w[u]), len(db.out[u]))
+			}
+		}
+	}
+}
+
+// FuzzWeightsAligned drives both builders through an opcode script: weighted
+// and unweighted adds (checked and unchecked), removals, AddNode, Build with
+// continued mutation afterwards, and ToBuilder round trips. After every step it
+// checks the prefix invariant, and at every Build that each weight came out on
+// its edge. Weights avoid 1 on purpose, so a slot filled by the implicit default
+// can never pass as a real weight.
+func FuzzWeightsAligned(f *testing.F) {
+	f.Add([]byte{0x00, 1, 2, 0x44, 2, 3, 0x76, 3, 0, 0xa0, 0, 0, 0x99, 0, 0, 0x0f, 4, 1, 0xb0, 0, 0, 0x88, 1, 2})
+	f.Add(bytes.Repeat([]byte{0x11, 0x87, 0x2a, 0xfe, 0x63, 0x05}, 40))
+	f.Fuzz(func(t *testing.T, script []byte) {
+		if len(script) > 6000 {
+			script = script[:6000]
+		}
+		ub, db := NewBuilder(4), NewDigraphBuilder(4)
 		uwant, dwant := map[[2]int]float64{}, map[[2]int]float64{}
-		for range steps {
-			u, v := r.IntN(n), r.IntN(n)
-			w := float64(r.IntN(1000)) / 8
-			switch r.IntN(3) {
-			case 0:
+		for i := 0; i+2 < len(script); i += 3 {
+			op, a, c := script[i], int(script[i+1]), int(script[i+2])
+			n := ub.NumNodes()
+			u, v := a%n, c%n
+			w := 2 + float64(op>>4)/4 // 2.0 .. 5.75, never 1
+			switch op & 0x0f {
+			case 0, 1, 2, 3, 12, 13, 14, 15:
 				if ub.AddEdgeW(u, v, w) {
 					uwant[edgeKey(u, v)] = w
 				}
 				if db.AddEdgeW(u, v, w) {
 					dwant[[2]int{u, v}] = w
 				}
-			case 1: // unweighted add: weight 1 whether or not the builder has switched
+			case 4, 5:
 				if ub.AddEdge(u, v) {
 					uwant[edgeKey(u, v)] = 1
 				}
 				if db.AddEdge(u, v) {
 					dwant[[2]int{u, v}] = 1
 				}
-			case 2:
+			case 6: // unchecked adds are only legal on fresh pairs
+				if u != v && !ub.HasEdge(u, v) && ub.AddEdgeUnchecked(u, v) {
+					uwant[edgeKey(u, v)] = 1
+				}
+				if u != v && !db.HasEdge(u, v) && db.AddEdgeUnchecked(u, v) {
+					dwant[[2]int{u, v}] = 1
+				}
+			case 7, 8:
 				if ub.RemoveEdge(u, v) {
 					delete(uwant, edgeKey(u, v))
 				}
 				if db.RemoveEdge(u, v) {
 					delete(dwant, [2]int{u, v})
 				}
+			case 9:
+				if n < 64 {
+					ub.AddNode()
+					db.AddNode()
+				}
+			case 10: // build, check, and keep mutating the same builders
+				checkWeights(t, ub.Build(), uwant)
+				checkDigraphWeights(t, db.Build(), dwant)
+			case 11: // round trip through the immutable form
+				ub = ub.Build().ToBuilder()
+				db = db.Build().ToBuilder()
 			}
+			checkPrefix(t, ub, db)
 		}
 		checkWeights(t, ub.Build(), uwant)
 		checkDigraphWeights(t, db.Build(), dwant)

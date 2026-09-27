@@ -103,25 +103,38 @@ func ExampleBuilder_AddEdgeW() {
 }
 
 func ExampleGraph_EdgeOffset() {
-	// Per-edge data of your own, stored in a slice laid out like the adjacency:
-	// slot EdgeOffset(u)+i belongs to the edge from u to Neighbors(u)[i]. Here
-	// each edge is labeled at both of its ends.
-	b := gonx.NewBuilder(3)
+	// Per-edge data of your own lives in a slice laid out like the adjacency:
+	// slot EdgeOffset(u)+i belongs to the edge from u to Neighbors(u)[i].
+	// Compute it once per half-edge, then read it in the hot loop with no map
+	// lookup. Here the value is a resistance of 1/(deg(u)+deg(v)).
+	b := gonx.NewBuilder(4)
 	b.AddEdge(0, 1)
 	b.AddEdge(1, 2)
+	b.AddEdge(1, 3)
 	g := b.Build()
 
-	label := make([]string, 2*g.NumEdges())
-	names := map[[2]int]string{{0, 1}: "a", {1, 2}: "b"}
+	resistance := make([]float64, 2*g.NumEdges())
 	for u := range g.Nodes() {
+		off := g.EdgeOffset(u)
 		for i, v := range g.Neighbors(u) {
-			lo, hi := min(u, int(v)), max(u, int(v))
-			label[g.EdgeOffset(u)+i] = names[[2]int{lo, hi}]
+			resistance[off+i] = 1 / float64(g.Degree(u)+g.Degree(int(v)))
 		}
 	}
-	fmt.Println(label[g.EdgeOffset(1) : g.EdgeOffset(1)+g.Degree(1)])
+
+	// Total resistance around node 1: three edges of 1/(3+1) each.
+	var total float64
+	off := g.EdgeOffset(1)
+	for i := range g.Neighbors(1) {
+		total += resistance[off+i]
+	}
+	fmt.Println(total)
+
+	// EdgeIndex finds a single edge's slot without walking the row.
+	slot, _ := g.EdgeIndex(2, 1)
+	fmt.Println(resistance[slot])
 	// Output:
-	// [a b]
+	// 0.75
+	// 0.25
 }
 
 func ExampleForward() {

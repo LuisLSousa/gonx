@@ -183,3 +183,25 @@ func TestDoubleEdgeSwapRejectsWeighted(t *testing.T) {
 		t.Fatalf("err = %v, want ErrInvalidParam", err)
 	}
 }
+
+func TestTransformsKeepEdgelessGraphWeighted(t *testing.T) {
+	// A weighted graph with no edges is legal (NewWeightedBuilder, or every edge
+	// removed) and must come out of every transform still weighted.
+	g := gonx.NewWeightedBuilder(5).Build()
+	if !g.Weighted() {
+		t.Fatal("precondition: edgeless weighted graph is not weighted")
+	}
+	if !Copy(g).Weighted() {
+		t.Error("Copy dropped weightedness")
+	}
+	out, err := RelabelNodes(g, []int{4, 3, 2, 1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Weighted() {
+		t.Error("RelabelNodes dropped weightedness")
+	}
+	if !Shuffle(g, gonx.NewRand(1)).Weighted() {
+		t.Error("Shuffle dropped weightedness")
+	}
+}

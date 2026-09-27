@@ -19,11 +19,13 @@ import (
 // absent edges and report false; the degree accessors panic on an out-of-range
 // node.
 //
-// A DigraphBuilder starts unweighted. The first [DigraphBuilder.AddEdgeW] call
-// switches it to weighted for good, with the same rules as [Builder.AddEdgeW].
+// A DigraphBuilder from [NewDigraphBuilder] starts unweighted, and the first
+// successful [DigraphBuilder.AddEdgeW] call switches it to weighted for good;
+// one from [NewWeightedDigraphBuilder] is weighted from the start. The rules
+// are those of [Builder.AddEdgeW].
 type DigraphBuilder struct {
 	out       [][]int32   // out[u] holds the targets of u's outgoing edges
-	w         [][]float64 // w[u] weights a prefix of out[u] (see Builder.AddEdgeW); nil until the first AddEdgeW
+	w         [][]float64 // w[u] weights a prefix of out[u] (see appendWeight); nil while unweighted
 	inDegrees []int32     // per-node counts, kept current on Add/Remove so InDegree is O(1)
 	m         int         // number of directed edges
 }
@@ -41,14 +43,24 @@ func NewDigraphBuilder(n int) *DigraphBuilder {
 	return &DigraphBuilder{out: make([][]int32, n), inDegrees: make([]int32, n)}
 }
 
+// NewWeightedDigraphBuilder returns a DigraphBuilder with n isolated nodes that
+// is weighted from the start, the directed counterpart of [NewWeightedBuilder].
+// It panics if n exceeds 2^31-1.
+func NewWeightedDigraphBuilder(n int) *DigraphBuilder {
+	b := NewDigraphBuilder(n)
+	b.w = make([][]float64, len(b.out))
+	return b
+}
+
 // NumNodes reports the number of nodes.
 func (b *DigraphBuilder) NumNodes() int { return len(b.out) }
 
 // NumEdges reports the number of directed edges.
 func (b *DigraphBuilder) NumEdges() int { return b.m }
 
-// Weighted reports whether the Builder carries edge weights, which is the case
-// from the first [DigraphBuilder.AddEdgeW] call on.
+// Weighted reports whether the Builder carries edge weights: always for a
+// [NewWeightedDigraphBuilder], and from the first successful
+// [DigraphBuilder.AddEdgeW] call on for a [NewDigraphBuilder].
 func (b *DigraphBuilder) Weighted() bool { return b.w != nil }
 
 // AddNode appends a new isolated node and returns its ID. It panics if the node
@@ -94,9 +106,9 @@ func (b *DigraphBuilder) AddEdge(u, v int) bool {
 
 // AddEdgeW inserts the directed edge u->v with weight w. It rejects everything
 // AddEdge rejects, plus NaN and infinite weights, returning false in each case.
-// The first call makes the Builder weighted: edges already present receive
-// weight 1, as do edges added later without an explicit weight. See
-// [Builder.AddEdgeW] for the reasoning.
+// The first successful call makes a [NewDigraphBuilder] weighted: edges already
+// present then have weight 1, as do edges added later without an explicit
+// weight, and an existing edge is never re-weighted. See [Builder.AddEdgeW].
 func (b *DigraphBuilder) AddEdgeW(u, v int, w float64) bool {
 	if math.IsNaN(w) || math.IsInf(w, 0) {
 		return false
@@ -182,11 +194,9 @@ func (b *DigraphBuilder) Build() *Digraph {
 
 	outOffsets := make([]int32, n+1)
 	var off int32
-	maxOut := 0
 	for u := range n {
 		outOffsets[u] = off
 		off += int32(len(b.out[u]))
-		maxOut = max(maxOut, len(b.out[u]))
 	}
 	outOffsets[n] = off
 	outData := make([]int32, b.m)
@@ -198,6 +208,10 @@ func (b *DigraphBuilder) Build() *Digraph {
 			slices.Sort(row)
 		}
 	} else {
+		maxOut := 0
+		for _, targets := range b.out {
+			maxOut = max(maxOut, len(targets))
+		}
 		outWeights = make([]float64, b.m)
 		keys := make([]uint64, maxOut)
 		row := make([]float64, maxOut)
@@ -260,9 +274,10 @@ func (b *DigraphBuilder) Build() *Digraph {
 // predecessors.
 //
 // Accessors that take a node ID panic with a descriptive message when the ID is
-// outside [0, N); HasEdge and Weight are the exceptions and report false for
-// out-of-range endpoints. The zero value is not a valid Digraph; obtain one from
-// [DigraphBuilder.Build].
+// outside [0, N); HasEdge, Weight, EdgeIndex and InEdgeIndex take an edge
+// instead and report false for out-of-range endpoints. Slices returned by the
+// accessors are views into the graph's storage with no spare capacity. The zero
+// value is not a valid Digraph; obtain one from [DigraphBuilder.Build].
 type Digraph struct {
 	outOffsets []int32   // length n+1
 	outData    []int32   // length m; concatenated sorted out-neighbor lists
@@ -313,7 +328,8 @@ func (g *Digraph) OutNeighbors(u int) []int32 {
 	if u < 0 || u >= g.NumNodes() {
 		panicNode("OutNeighbors", u, g.NumNodes())
 	}
-	return g.outData[g.outOffsets[u]:g.outOffsets[u+1]]
+	lo, hi := g.outOffsets[u], g.outOffsets[u+1]
+	return g.outData[lo:hi:hi]
 }
 
 // InNeighbors returns the sources of u's incoming edges as a sorted, zero-copy
@@ -323,7 +339,8 @@ func (g *Digraph) InNeighbors(u int) []int32 {
 	if u < 0 || u >= g.NumNodes() {
 		panicNode("InNeighbors", u, g.NumNodes())
 	}
-	return g.inData[g.inOffsets[u]:g.inOffsets[u+1]]
+	lo, hi := g.inOffsets[u], g.inOffsets[u+1]
+	return g.inData[lo:hi:hi]
 }
 
 // OutNeighborsSeq iterates over the targets of u's outgoing edges in ascending
@@ -382,7 +399,8 @@ func (g *Digraph) OutWeights(u int) []float64 {
 	if g.outWeights == nil {
 		return nil
 	}
-	return g.outWeights[g.outOffsets[u]:g.outOffsets[u+1]]
+	lo, hi := g.outOffsets[u], g.outOffsets[u+1]
+	return g.outWeights[lo:hi:hi]
 }
 
 // InWeights returns the weights of u's incoming edges, aligned index for index
@@ -395,7 +413,8 @@ func (g *Digraph) InWeights(u int) []float64 {
 	if g.inWeights == nil {
 		return nil
 	}
-	return g.inWeights[g.inOffsets[u]:g.inOffsets[u+1]]
+	lo, hi := g.inOffsets[u], g.inOffsets[u+1]
+	return g.inWeights[lo:hi:hi]
 }
 
 // Weight returns the weight of the directed edge u->v. ok is false when the
@@ -447,6 +466,36 @@ func (g *Digraph) InEdgeOffset(u int) int {
 		panicNode("InEdgeOffset", u, g.NumNodes())
 	}
 	return int(g.inOffsets[u])
+}
+
+// EdgeIndex returns the out slot of the edge u->v: OutEdgeOffset(u) plus the
+// position of v in OutNeighbors(u). ok is false when the edge does not exist or
+// an endpoint is out of range. It runs in O(log outdeg(u)).
+func (g *Digraph) EdgeIndex(u, v int) (slot int, ok bool) {
+	n := g.NumNodes()
+	if u < 0 || v < 0 || u >= n || v >= n {
+		return 0, false
+	}
+	i, found := slices.BinarySearch(g.OutNeighbors(u), int32(v))
+	if !found {
+		return 0, false
+	}
+	return int(g.outOffsets[u]) + i, true
+}
+
+// InEdgeIndex returns the in slot of the edge u->v: InEdgeOffset(v) plus the
+// position of u in InNeighbors(v). ok is false when the edge does not exist or
+// an endpoint is out of range. It runs in O(log indeg(v)).
+func (g *Digraph) InEdgeIndex(u, v int) (slot int, ok bool) {
+	n := g.NumNodes()
+	if u < 0 || v < 0 || u >= n || v >= n {
+		return 0, false
+	}
+	i, found := slices.BinarySearch(g.InNeighbors(v), int32(u))
+	if !found {
+		return 0, false
+	}
+	return int(g.inOffsets[v]) + i, true
 }
 
 // RandomOutNeighbor returns a uniformly random target of u's outgoing edges. ok
