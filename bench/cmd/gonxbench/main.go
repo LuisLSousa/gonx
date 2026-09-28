@@ -2,6 +2,9 @@
 // build (edge arrays -> CSR), PageRank (damping 0.85, tolerance 1e-6,
 // networkx-style n*tol L1 stopping rule), weakly connected components,
 // and BFS reachability over out-edges from the highest out-degree node.
+// With -op dijkstra it instead times single-source Dijkstra from that node
+// over edgeWeight, in a process of its own so the weighted copy of the
+// graph does not inflate the peak memory of the core run.
 //
 // Edge parsing happens before any timing starts; every library's runner
 // times the same work on the same arrays. Results go to stdout as CSV
@@ -14,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -25,6 +29,7 @@ import (
 func main() {
 	in := flag.String("in", "", "edge list path (required)")
 	repeats := flag.Int("repeats", 3, "repeats per operation")
+	op := flag.String("op", "core", "core (build, pagerank, wcc, bfs) or dijkstra")
 	flag.Parse()
 	if *in == "" {
 		log.Fatal("-in is required")
@@ -32,6 +37,10 @@ func main() {
 
 	us, vs, n := readEdges(*in)
 	edges := len(us)
+	if *op == "dijkstra" {
+		benchDijkstra(us, vs, n, *repeats)
+		return
+	}
 
 	var g *gonx.Digraph
 	for i := range *repeats {
@@ -80,36 +89,67 @@ func main() {
 		}
 	}
 	reached := 0
+	var hops []int32
 	for i := range *repeats {
+		// The result slice is allocated inside the timing, as for Dijkstra,
+		// since the other libraries allocate theirs too.
 		start := time.Now()
-		reached = bfsOut(g, src)
+		hops = make([]int32, n)
+		metrics.BreadthFirst(g, src, hops)
 		emit("gonx", "bfs", n, edges, i, time.Since(start))
+	}
+	for _, h := range hops {
+		if h >= 0 {
+			reached++
+		}
 	}
 
 	fmt.Printf("#check,gonx,n=%d,edges=%d,pr_top=%d,pr_top_score=%.9f,wcc=%d,bfs_src=%d,bfs_reached=%d\n",
 		n, edges, top, topScore, len(comps), src, reached)
 }
 
-// bfsOut counts the nodes reachable from src by following out-edges,
-// including src itself.
-func bfsOut(g *gonx.Digraph, src int) int {
-	visited := make([]bool, g.NumNodes())
-	queue := make([]int32, 0, 1024)
-	visited[src] = true
-	queue = append(queue, int32(src))
-	count := 0
-	for len(queue) > 0 {
-		u := queue[0]
-		queue = queue[1:]
-		count++
-		for _, v := range g.OutNeighbors(int(u)) {
-			if !visited[v] {
-				visited[v] = true
-				queue = append(queue, v)
-			}
+// edgeWeight is the weight every runner gives the edge u->v: a fixed
+// integer hash mapped to [1, 2) in steps of 1/1000, so all four libraries
+// see bit-identical weights without a weighted edge-list format.
+func edgeWeight(u, v int) float64 {
+	return 1 + float64((u*7919+v*104729)%1000)/1000
+}
+
+// benchDijkstra times single-source shortest path lengths from the highest
+// out-degree node. Building the weighted graph is not timed; allocating the
+// distance slice is, since the other libraries allocate their result too.
+func benchDijkstra(us, vs []int, n, repeats int) {
+	edges := len(us)
+	b := gonx.NewWeightedDigraphBuilder(n)
+	for j := range us {
+		b.AddEdgeW(us[j], vs[j], edgeWeight(us[j], vs[j]))
+	}
+	g := b.Build()
+	src := 0
+	for u := 1; u < n; u++ {
+		if g.OutDegree(u) > g.OutDegree(src) {
+			src = u
 		}
 	}
-	return count
+	var dist []float64
+	for i := range repeats {
+		start := time.Now()
+		dist = make([]float64, n)
+		if err := metrics.Dijkstra(g, src, dist, nil); err != nil {
+			log.Fatal(err)
+		}
+		emit("gonx", "dijkstra", n, edges, i, time.Since(start))
+	}
+	reached, sum, far := 0, 0.0, 0.0
+	for _, d := range dist {
+		if !math.IsInf(d, 1) {
+			reached++
+			sum += d
+			far = max(far, d)
+		}
+	}
+	fmt.Printf("#check,gonx,n=%d,edges=%d,sp_src=%d,sp_reached=%d,sp_sum=%.3f,sp_max=%.6f\n",
+		n, edges, src, reached, sum, far)
 }
 
 // readEdges parses the "u v" edge list into two arrays and returns them

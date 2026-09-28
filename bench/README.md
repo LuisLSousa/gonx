@@ -16,7 +16,7 @@ answer checks (`checks.txt`), and the exact environment (`env.txt`).
 
 ## What is measured
 
-Four operations, on seeded Barabasi-Albert graphs (m = 5, seed 42)
+Five operations, on seeded Barabasi-Albert graphs (m = 5, seed 42)
 written once as an edge-list file that every library loads:
 
 | op | definition |
@@ -25,11 +25,15 @@ written once as an edge-list file that every library loads:
 | pagerank | damping 0.85; converged scores (see fairness notes) |
 | wcc | weakly connected components, fully materialized |
 | bfs | reachability over out-edges from the highest out-degree node |
+| dijkstra | weighted shortest-path lengths from that same node to every node |
 
 Each (library, size) pair runs as its own process under
 `/usr/bin/time -l`, which gives peak RSS for the whole process —
 interpreter and runtime overhead included, because that is what a user
 actually pays. File parsing is excluded from every timed section.
+Dijkstra needs a weighted copy of the graph, so it runs in a second
+process per library (`-op dijkstra`); its peak RSS is recorded as
+`mem_dijkstra` and kept out of the memory comparison of the other four.
 
 ## Fairness notes
 
@@ -40,10 +44,16 @@ actually pays. File parsing is excluded from every timed section.
 - **gonum** uses `network.PageRankSparse`; the dense `network.PageRank`
   builds an n x n matrix and cannot fit n = 1M in memory. WCC uses the
   `graph.Undirect` adapter over `topo.ConnectedComponents`.
-- **gonx** BFS is a ~15-line loop over `OutNeighbors` in this harness
-  (`cmd/gonxbench`), since the metrics package has no directed BFS
-  helper; the loop is idiomatic use of the public API and the code is
-  right there to read.
+- **gonx** BFS is `metrics.BreadthFirst`, which records hop distances,
+  not just reachability; the reach count is taken afterwards, untimed.
+- **Dijkstra weights** are not in the edge-list file. Every runner derives
+  them from the same integer hash, `1 + ((u*7919 + v*104729) mod 1000)/1000`,
+  which gives bit-identical weights in [1, 2) in Go and Python. The timed
+  calls are `metrics.Dijkstra` (gonx, result slice allocated inside the
+  timing), `path.DijkstraFrom` (gonum), `single_source_dijkstra_path_length`
+  (networkx) and `Graph.distances(..., algorithm="dijkstra")` (igraph).
+  All four report the same reach, distance sum and farthest distance in
+  `checks.txt`.
 - **PageRank stopping rules differ by library family and are pinned
   deliberately.** gonx and networkx share the rule L1 delta < n * tol;
   the harness sets tol = 1e-10 (not the networkx default of 1e-6,
@@ -61,7 +71,7 @@ actually pays. File parsing is excluded from every timed section.
   quiet re-run (see `results/env.txt` for the exact conditions of the
   run you are looking at).
 - BA graphs are a single topology; ratios on your graph will differ.
-- This measures four operations, not the libraries' full breadth.
+- This measures five operations, not the libraries' full breadth.
   networkx in particular trades speed for an enormous algorithm
   catalog, pure-Python hackability, and maturity; the comparison here
   is about what a compiled CSR core buys you, not about which library

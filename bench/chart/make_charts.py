@@ -28,12 +28,13 @@ COLORS = {
     "igraph": "#1baf7a",
     "gonum": "#eda100",
 }
-OPS = ["build", "pagerank", "wcc", "bfs"]
+OPS = ["build", "pagerank", "wcc", "bfs", "dijkstra"]
 OP_LABELS = {
     "build": "build (5.0M edges)",
     "pagerank": "PageRank",
     "wcc": "weak components",
     "bfs": "BFS reachability",
+    "dijkstra": "Dijkstra (weighted)",
 }
 
 INK = "#1e293b"
@@ -96,7 +97,7 @@ def main():
     if not times:
         sys.exit(f"no rows for n={n_target} in {RESULTS}")
 
-    W, H = 680, 432
+    W, H = 680, 476
     x0, x1 = 150, 640
     row_h = 44
     top = 92
@@ -113,7 +114,7 @@ def main():
     svg.append(f'<rect width="{W}" height="{H}" fill="{SURFACE}"/>')
     svg.append(
         f'<text x="24" y="30" font-size="15" font-weight="600" fill="{INK}">'
-        f"Four graph operations, one million nodes</text>"
+        f"Five graph operations, one million nodes</text>"
     )
     svg.append(
         f'<text x="24" y="49" font-size="11" fill="{INK2}">'
@@ -188,7 +189,7 @@ def main():
     my = plot_bottom + 56
     svg.append(
         f'<text x="24" y="{my - 14}" font-size="12" font-weight="600" fill="{INK}">'
-        f"Peak memory, same workload</text>"
+        f"Peak memory, first four operations</text>"
     )
     # Decade ticks in MB, not bytes, so labels land on 100 MB / 1 GB / ...
     MB = 1 << 20
