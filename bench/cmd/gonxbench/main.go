@@ -89,9 +89,12 @@ func main() {
 		}
 	}
 	reached := 0
-	hops := make([]int32, n)
+	var hops []int32
 	for i := range *repeats {
+		// The result slice is allocated inside the timing, as for Dijkstra,
+		// since the other libraries allocate theirs too.
 		start := time.Now()
+		hops = make([]int32, n)
 		metrics.BreadthFirst(g, src, hops)
 		emit("gonx", "bfs", n, edges, i, time.Since(start))
 	}
