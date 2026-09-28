@@ -15,6 +15,16 @@ func edgeKey(u, v int) [2]int {
 	return [2]int{u, v}
 }
 
+// anyNegativeWant is the expected HasNegativeWeight for an edge-to-weight map.
+func anyNegativeWant(want map[[2]int]float64) bool {
+	for _, w := range want {
+		if w < 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // checkWeights verifies every edge of g against want through both accessors,
 // that neighbor lists are sorted with weights aligned, and that g has no edge
 // beyond want. On an unweighted g every want value must be 1.
@@ -22,6 +32,9 @@ func checkWeights(t *testing.T, g *Graph, want map[[2]int]float64) {
 	t.Helper()
 	if g.NumEdges() != len(want) {
 		t.Fatalf("NumEdges = %d, want %d", g.NumEdges(), len(want))
+	}
+	if got := g.HasNegativeWeight(); got != anyNegativeWant(want) {
+		t.Fatalf("HasNegativeWeight = %v, want %v", got, !got)
 	}
 	for u := 0; u < g.NumNodes(); u++ {
 		nbrs, ws := g.Neighbors(u), g.Weights(u)
@@ -227,6 +240,9 @@ func checkDigraphWeights(t *testing.T, g *Digraph, want map[[2]int]float64) {
 	t.Helper()
 	if g.NumEdges() != len(want) {
 		t.Fatalf("NumEdges = %d, want %d", g.NumEdges(), len(want))
+	}
+	if got := g.HasNegativeWeight(); got != anyNegativeWant(want) {
+		t.Fatalf("HasNegativeWeight = %v, want %v", got, !got)
 	}
 	inTotal := 0
 	for u := 0; u < g.NumNodes(); u++ {
@@ -600,6 +616,9 @@ func FuzzWeightsAligned(f *testing.F) {
 			n := ub.NumNodes()
 			u, v := a%n, c%n
 			w := 2 + float64(wb)/32 // 2.0 .. 9.97, never 1
+			if wb&1 == 1 {
+				w = -w // so HasNegativeWeight flips as edges come and go
+			}
 			switch op {
 			case 0, 1, 2, 3:
 				if ub.AddEdgeW(u, v, w) {
@@ -650,4 +669,45 @@ func FuzzWeightsAligned(f *testing.F) {
 		checkWeights(t, ub.Build(), uwant)
 		checkDigraphWeights(t, db.Build(), dwant)
 	})
+}
+
+func TestHasNegativeWeight(t *testing.T) {
+	// Each builder gets a negative edge that is later removed or replaced; the
+	// flag follows the weights the graph ends up with, not their history.
+	b := NewBuilder(3)
+	b.AddEdgeW(0, 1, 2)
+	if b.Build().HasNegativeWeight() {
+		t.Error("Graph with only positive weights reports a negative one")
+	}
+	b.AddEdgeW(1, 2, -1)
+	g := b.Build()
+	if !g.HasNegativeWeight() {
+		t.Error("Graph with edge {1, 2} at -1 reports no negative weight")
+	}
+	if !g.ToBuilder().Build().HasNegativeWeight() {
+		t.Error("ToBuilder round trip lost the negative weight")
+	}
+	b.RemoveEdge(1, 2)
+	b.AddEdgeW(1, 2, 3)
+	if b.Build().HasNegativeWeight() {
+		t.Error("Graph whose edge {1, 2} now weighs 3 still reports a negative weight")
+	}
+	b.AddEdgeW(0, 2, math.Copysign(0, -1))
+	if b.Build().HasNegativeWeight() {
+		t.Error("-0 counts as negative")
+	}
+
+	d := NewDigraphBuilder(3)
+	d.AddEdgeW(2, 0, -4)
+	if !d.Build().HasNegativeWeight() {
+		t.Error("Digraph with edge 2->0 at -4 reports no negative weight")
+	}
+	d.RemoveEdge(2, 0)
+	if d.Build().HasNegativeWeight() {
+		t.Error("Digraph whose negative edge was removed still reports one")
+	}
+
+	if NewBuilder(2).Build().HasNegativeWeight() || NewDigraphBuilder(2).Build().HasNegativeWeight() {
+		t.Error("unweighted graph reports a negative weight")
+	}
 }

@@ -6,6 +6,8 @@
 package metrics
 
 import (
+	"fmt"
+
 	"github.com/LuisLSousa/gonx"
 	"github.com/LuisLSousa/gonx/internal/pool"
 )
@@ -114,8 +116,49 @@ func bfsDistances(g *gonx.Graph, src int, dist []int32, queue []int32) {
 	}
 }
 
-// BFS fills dist with shortest-path distances from src; dist[v] == -1 means v is
-// unreachable from src. dist must have length g.NumNodes().
+// bfsAdjacency is bfsDistances over Adjacency; the two loops are
+// kept separate so the concrete one stays free of dynamic calls.
+func bfsAdjacency(g gonx.Adjacency, src int, dist []int32, queue []int32) {
+	for i := range dist {
+		dist[i] = -1
+	}
+	dist[src] = 0
+	queue = queue[:0]
+	queue = append(queue, int32(src))
+	for head := 0; head < len(queue); head++ {
+		u := queue[head]
+		du := dist[u]
+		for _, v := range g.OutNeighbors(int(u)) {
+			if dist[v] == -1 {
+				dist[v] = du + 1
+				queue = append(queue, v)
+			}
+		}
+	}
+}
+
+// BreadthFirst fills dist with the number of edges on a shortest path from src
+// to every node, following edges in their forward direction; dist[v] == -1
+// means v is unreachable. It accepts either graph kind through
+// [gonx.Adjacency]: on a Digraph the distances follow edge direction, on a
+// Graph they ignore it. It panics if src is out of range or dist does not have
+// length g.NumNodes().
+func BreadthFirst(g gonx.Adjacency, src int, dist []int32) {
+	n := g.NumNodes()
+	if src < 0 || src >= n {
+		panic(fmt.Sprintf("gonx/metrics: BreadthFirst: source %d out of range [0, %d)", src, n))
+	}
+	if len(dist) != n {
+		panic(fmt.Sprintf("gonx/metrics: BreadthFirst: dist has length %d, want %d", len(dist), n))
+	}
+	bfsAdjacency(g, src, dist, make([]int32, 0, g.NumNodes()))
+}
+
+// BFS is [BreadthFirst] for an undirected Graph. It predates BreadthFirst and
+// keeps its signature so that code holding it as a function value still
+// compiles. It also keeps its concrete-type loop, which the all-pairs metrics
+// in this package are built on, since going through the interface would cost a
+// dynamic call per visited node.
 func BFS(g *gonx.Graph, src int, dist []int32) {
 	bfsDistances(g, src, dist, make([]int32, 0, g.NumNodes()))
 }

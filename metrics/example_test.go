@@ -71,3 +71,65 @@ func ExampleWeaklyConnectedComponents() {
 	// [0 1 4]
 	// [2 3]
 }
+
+func ExampleBreadthFirst() {
+	// Hop counts follow edge direction on a Digraph: 3 is two hops from 0, and
+	// nothing leads back to 0.
+	b := gonx.NewDigraphBuilder(4)
+	b.AddEdge(0, 1)
+	b.AddEdge(1, 3)
+	b.AddEdge(2, 0)
+	g := b.Build()
+
+	hops := make([]int32, g.NumNodes())
+	metrics.BreadthFirst(g, 0, hops)
+	fmt.Println(hops)
+	// Output:
+	// [0 1 -1 2]
+}
+
+func ExampleDijkstra() {
+	// A square 0-1-2-3 with unit sides, a diagonal 0-2 of weight 2.5, and a
+	// direct 0-3 of weight 5. Both shortcuts lose to walking the sides.
+	b := gonx.NewBuilder(4)
+	b.AddEdgeW(0, 1, 1)
+	b.AddEdgeW(1, 2, 1)
+	b.AddEdgeW(2, 3, 1)
+	b.AddEdgeW(0, 2, 2.5)
+	b.AddEdgeW(0, 3, 5)
+	g := b.Build()
+
+	dist := make([]float64, g.NumNodes())
+	prev := make([]int32, g.NumNodes())
+	if err := metrics.Dijkstra(g, 0, dist, prev); err != nil {
+		panic(err)
+	}
+	fmt.Println(dist)
+	fmt.Println(prev) // the shortest-path tree: -1 marks the source
+	// Output:
+	// [0 1 2 3]
+	// [-1 0 1 2]
+}
+
+func ExampleShortestPath() {
+	b := gonx.NewBuilder(5) // node 4 stays isolated
+	b.AddEdgeW(0, 1, 1)
+	b.AddEdgeW(1, 2, 1)
+	b.AddEdgeW(2, 3, 1)
+	b.AddEdgeW(0, 3, 5)
+	g := b.Build()
+
+	path, length, err := metrics.ShortestPath(g, 0, 3)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(path, length)
+	path, length, err = metrics.ShortestPath(g, 0, 4)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(path == nil, length)
+	// Output:
+	// [0 1 2 3] 3
+	// true +Inf
+}
