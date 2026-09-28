@@ -145,11 +145,11 @@ func ExampleBridges() {
 	users := []float64{120, 80, 200, 40, 25, 60, 5}
 
 	for _, br := range metrics.Bridges(g, users) {
-		fmt.Printf("cutting %d-%d strands nodes: %d, users: %v\n", br.U, br.V, br.Side, br.SideWeight)
+		fmt.Printf("cutting %d-%d strands %d of 7 nodes, %v of 530 users\n", br.U, br.V, br.Side, br.SideWeight)
 	}
 	// Output:
-	// cutting 2-3 strands nodes: 4, users: 130
-	// cutting 5-6 strands nodes: 1, users: 5
+	// cutting 2-3 strands 4 of 7 nodes, 130 of 530 users
+	// cutting 5-6 strands 1 of 7 nodes, 5 of 530 users
 }
 
 func ExampleArticulationPoints() {

@@ -48,7 +48,7 @@ func bruteCuts(g *gonx.Graph) ([]Bridge, []int) {
 		if len(comps) == before {
 			continue
 		}
-		smallest := origComps[origID[u]][0] // components list members from their smallest
+		smallest := slices.Min(origComps[origID[u]])
 		if id[v] == id[smallest] {
 			u, v = v, u
 		}
@@ -119,12 +119,19 @@ func TestCutsHandWorked(t *testing.T) {
 			points:  []int{2, 3, 5},
 		},
 		{
-			// A bridge whose V is smaller than its U: node 0 hangs off 4, but
-			// the component's smallest node is 0 itself, so the other side,
-			// the cycle 1-2-3-4, is the one that detaches.
+			// The side that detaches is the big one: node 0 hangs off 4, but
+			// it is the component's smallest node, so V is 4 and the side is
+			// the cycle 1-2-3-4, not the pendant.
 			name: "low pendant", n: 5, edges: [][2]int{{0, 4}, {1, 2}, {2, 3}, {3, 4}, {4, 1}},
 			bridges: []Bridge{{U: 0, V: 4, Side: 4}},
 			points:  []int{4},
+		},
+		{
+			// A bridge whose V is smaller than its U: in 0-3-1, cutting 3-1
+			// detaches 1, which is below 3.
+			name: "V below U", n: 4, edges: [][2]int{{0, 3}, {3, 1}},
+			bridges: []Bridge{{U: 3, V: 1, Side: 1}, {U: 0, V: 3, Side: 2}},
+			points:  []int{3},
 		},
 	}
 	for _, c := range cases {
@@ -201,7 +208,7 @@ func TestBridgesNodeWeight(t *testing.T) {
 
 func TestCutsDeepPath(t *testing.T) {
 	// A path is the worst case for the search depth. A recursive version
-	// would need a frame per node here; the explicit stack needs 4 bytes.
+	// would need a frame per node here; the explicit stack needs 4 bytes per node.
 	const n = 300_000
 	b := gonx.NewBuilder(n)
 	for i := 1; i < n; i++ {
