@@ -6,7 +6,10 @@ Run after gen_edges.go, from anywhere:
 
 Writes <name>.dijkstra.json: for each of a fixed set of sources, the
 single-source shortest-path lengths as a dense list indexed by node, with -1
-for unreachable nodes. Requires networkx (the bench/ virtualenv has it).
+for unreachable nodes. For undirected graphs it also writes <name>.cuts.json:
+the articulation points, and every bridge as [u, v, side], oriented so that v
+is on the side without the component's smallest node and side counts the
+nodes there. Requires networkx (the bench/ virtualenv has it).
 """
 import json
 import pathlib
@@ -37,5 +40,19 @@ for path in sorted(HERE.glob("*.edges")):
     target = path.with_suffix(".dijkstra.json")
     with open(target, "w") as f:
         json.dump({"sources": out}, f, indent=0)
+    if not g.is_directed():
+        bridges = []
+        for a, b in nx.bridges(g):
+            h = g.copy()
+            h.remove_edge(a, b)
+            side_a = nx.node_connected_component(h, a)
+            smallest = min(side_a | nx.node_connected_component(h, b))
+            u, v = (a, b) if smallest in side_a else (b, a)
+            bridges.append([u, v, len(nx.node_connected_component(h, v))])
+        bridges.sort(key=lambda t: t[1])
+        cuts = {"articulation_points": sorted(nx.articulation_points(g)), "bridges": bridges}
+        with open(path.with_suffix(".cuts.json"), "w") as f:
+            json.dump(cuts, f, indent=0)
+        print(f"{path.stem}.cuts.json: {len(bridges)} bridges, {len(cuts['articulation_points'])} articulation points")
     zeros = sum(1 for _, _, d in g.edges(data=True) if d["weight"] == 0)
     print(f"{target.name}: {g.number_of_nodes()} nodes, {g.number_of_edges()} edges, {zeros} zero-weight")
