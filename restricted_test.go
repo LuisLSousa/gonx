@@ -295,6 +295,7 @@ func TestRestrictedViewOfView(t *testing.T) {
 // answers, which a view of it must ignore throughout.
 type lying struct{ *Graph }
 
+func (lying) NumNodes() int            { return 0 }
 func (lying) OutNeighbors(int) []int32 { return nil }
 func (lying) OutWeights(int) []float64 { return nil }
 func (lying) Weighted() bool           { return false }

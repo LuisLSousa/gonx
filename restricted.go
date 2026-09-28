@@ -14,9 +14,9 @@ import (
 // entry. Every other node's OutNeighbors and OutWeights are the graph's own
 // slices, returned as they are. Telling the two apart takes one bit test for
 // almost every node, and O(log t) when the test is inconclusive, where t is
-// the number of nodes whose lists changed. A view is
-// immutable and, like the graph, safe to read from several goroutines at once.
-// The zero value is not a valid view.
+// the number of nodes whose lists changed. A view is immutable and, like the
+// graph, safe to read from several goroutines at once. The zero value is not a
+// valid view.
 type Restricted struct {
 	g        restrictable
 	negative bool
