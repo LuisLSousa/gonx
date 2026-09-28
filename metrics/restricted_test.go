@@ -30,15 +30,21 @@ func TestRestrictedViewMatchesNetworkx(t *testing.T) {
 			}
 			view := gonx.RestrictedView(g, hidden.Nodes, hidden.Edges)
 			want := loadExpected(t, name+".restricted.json")
-			plain := loadExpected(t, name+".dijkstra.json")
+			// The same search with only the nodes hidden, to show that the
+			// hidden edges change something too.
+			nodesOnly := gonx.RestrictedView(g, hidden.Nodes, nil)
 			n := g.NumNodes()
 			dist := make([]float64, n)
 			prev := make([]int32, n)
-			changed := 0
+			byNodes := make([]float64, n)
+			fromEdges := 0
 			for src, wantDist := range want {
 				poison(dist, prev)
 				if err := Dijkstra(view, src, dist, prev); err != nil {
 					t.Fatalf("source %d: %v", src, err)
+				}
+				if err := Dijkstra(nodesOnly, src, byNodes, nil); err != nil {
+					t.Fatal(err)
 				}
 				for v := range n {
 					switch {
@@ -47,16 +53,17 @@ func TestRestrictedViewMatchesNetworkx(t *testing.T) {
 					case wantDist[v] >= 0 && math.Abs(dist[v]-wantDist[v]) > 1e-9:
 						t.Errorf("source %d: dist[%d] = %v, networkx says %v", src, v, dist[v], wantDist[v])
 					}
-					if wantDist[v] != plain[src][v] {
-						changed++
+					if (wantDist[v] < 0) != math.IsInf(byNodes[v], 1) || (wantDist[v] >= 0 && math.Abs(byNodes[v]-wantDist[v]) > 1e-9) {
+						fromEdges++
 					}
 				}
 				checkTree(t, view, src, dist, prev)
 			}
-			// A fixture whose hidden parts change no distance would pass
-			// against a view that hides nothing.
-			if changed == 0 {
-				t.Fatal("the restriction changes no distance; regenerate the fixture")
+			// A fixture whose hidden edges change no distance would pass
+			// against a view that ignores edges, since hiding the nodes
+			// changes distances on its own.
+			if fromEdges == 0 {
+				t.Fatal("the hidden edges change no distance; regenerate the fixture")
 			}
 		})
 	}
@@ -188,19 +195,33 @@ func TestShortestPathRestrictedAllocations(t *testing.T) {
 
 // BenchmarkDijkstraRestricted_10000 is BenchmarkDijkstra_10000 on views of the
 // same graph: one that hides nothing, which measures the cost of going through
-// the view, and one that hides an edge, which adds a list the view owns.
+// the view, and one that hides an edge, which adds two lists the view owns.
+// Hiding the hub (node 0, the oldest node of the preferential attachment)
+// changes hundreds of its neighbours' lists, the case where most lookups need
+// more than the filter; "hub-rebuilt" runs the same search on a graph built
+// without the hub's edges, the floor for what the view costs.
 func BenchmarkDijkstraRestricted_10000(b *testing.B) {
 	g := weightedScaleFree(b)
 	dist := make([]float64, g.NumNodes())
 	prev := make([]int32, g.NumNodes())
-	for name, view := range map[string]*gonx.Restricted{
-		"none": gonx.RestrictedView(g, nil, nil),
-		"edge": gonx.RestrictedView(g, nil, [][2]int{{5000, int(g.Neighbors(5000)[0])}}),
+	rebuilt := g.ToBuilder()
+	for _, v := range g.Neighbors(0) {
+		rebuilt.RemoveEdge(0, int(v))
+	}
+	for _, c := range []struct {
+		name string
+		g    gonx.Adjacency
+		src  int
+	}{
+		{"none", gonx.RestrictedView(g, nil, nil), 0},
+		{"edge", gonx.RestrictedView(g, nil, [][2]int{{5000, int(g.Neighbors(5000)[0])}}), 0},
+		{"hub", gonx.RestrictedView(g, []int{0}, nil), 1},
+		{"hub-rebuilt", rebuilt.Build(), 1},
 	} {
-		b.Run(name, func(b *testing.B) {
+		b.Run(c.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				if err := Dijkstra(view, 0, dist, prev); err != nil {
+				if err := Dijkstra(c.g, c.src, dist, prev); err != nil {
 					b.Fatal(err)
 				}
 			}

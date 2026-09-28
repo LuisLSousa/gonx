@@ -13,8 +13,8 @@ import (
 // A view shares the graph's storage and copies only the out-lists that lose an
 // entry. Every other node's OutNeighbors and OutWeights are the graph's own
 // slices, returned as they are. Telling the two apart takes one bit test for
-// almost every node when a few lists changed, and O(log t) when the test is
-// inconclusive, where t is the number of nodes whose lists changed. A view is
+// almost every node, and O(log t) when the test is inconclusive, where t is
+// the number of nodes whose lists changed. A view is
 // immutable and, like the graph, safe to read from several goroutines at once.
 // The zero value is not a valid view.
 type Restricted struct {
@@ -35,10 +35,16 @@ type Restricted struct {
 	nbrs    []int32
 	ws      []float64
 
-	// One bit per touched node, at bit(u). A clear bit proves u untouched in
-	// a single test, which keeps find's search off the path of almost every
-	// node when a view hides a few edges, the common case.
-	filter uint64
+	// A bit per touched node, at a hash of its ID: a clear bit proves a node
+	// untouched in one test, which keeps find's search off the path of almost
+	// every node. It has at least 16 bits per touched node, so about one
+	// untouched node in 16 needs the search, however many lists changed. Up
+	// to 64 bits it is the word small, the common case of a few hidden edges;
+	// beyond, it is large, and small has every bit set so that find passes
+	// every node on to lookup.
+	small uint64
+	large []uint64
+	shift uint // a hash's top 64-shift bits pick its filter bit
 
 	// What was asked to be hidden, so that a view of this view can be built
 	// directly over g instead of stacking one lookup on another.
@@ -49,15 +55,20 @@ type Restricted struct {
 // restrictable is what RestrictedView needs from the graph under a view,
 // beyond Adjacency: whether each edge is one-way, which nodes have an edge
 // into a given node, so that hiding the node can take it out of their lists,
-// and the out-lists' storage. Graph and Digraph implement it, and so does any
-// type that embeds them.
+// and the out-lists' storage. Graph and Digraph implement it. A type that
+// embeds one gets these methods too, and graph returns the embedded value, so
+// that the view reads one graph throughout rather than the embedding type's
+// overrides for some nodes and the storage beneath them for others.
 type restrictable interface {
 	Adjacency
 	directed() bool
 	inNeighbors(u int) []int32
 	outCSR() (offsets, nbrs []int32, ws []float64)
+	graph() restrictable
 }
 
+func (g *Graph) graph() restrictable                   { return g }
+func (g *Digraph) graph() restrictable                 { return g }
 func (*Graph) directed() bool                          { return false }
 func (g *Graph) inNeighbors(u int) []int32             { return g.Neighbors(u) }
 func (g *Graph) outCSR() ([]int32, []int32, []float64) { return g.offsets, g.data, g.weights }
@@ -90,11 +101,16 @@ func (r *Restricted) restriction() *Restricted { return r }
 // negative edge makes the view usable for Dijkstra.
 //
 // When g is itself a Restricted view, the result hides the union of both sets
-// over the same underlying graph. Building a view takes O(k log k + d) time,
-// where k is the number of edges hidden, counting those taken out with hidden
-// nodes, and d is the combined degree of the nodes whose lists change. When g
-// has a negative weight, deciding whether one survives adds a pass over all
-// of g's edges.
+// over the same underlying graph. When g is a type that embeds a Graph or a
+// Digraph, the view is of the embedded graph, and methods the embedding type
+// overrides are not consulted.
+//
+// Building a view takes O(k log k + d) time, where k is the number of edges
+// hidden, counting those taken out with hidden nodes, and d is the combined
+// degree of the nodes whose lists change. When g has a negative weight,
+// deciding whether one survives adds a pass over all of g's edges. A view of a
+// view is built afresh from the union, so hiding edges one at a time through a
+// chain of views costs O(k²) over k steps; pass them to one call instead.
 func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	var base restrictable
 	switch b := g.(type) {
@@ -104,7 +120,7 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 		nodes = append(slices.Clip(r.hiddenNodes), nodes...)
 		edges = append(slices.Clip(r.hiddenEdges), edges...)
 	case restrictable:
-		base = b
+		base = b.graph()
 	default:
 		// Unreachable while Adjacency is sealed: every implementation is one
 		// of the three types above or embeds one.
@@ -159,7 +175,6 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	touch := func(u int) {
 		r.touched = append(r.touched, int32(u))
 		r.offsets = append(r.offsets, int32(len(r.nbrs)))
-		r.filter |= bit(u)
 	}
 	keep := func(u int, drop []uint64) {
 		out := base.OutNeighbors(u)
@@ -215,6 +230,24 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 		cut = cut[j:]
 	}
 
+	bits := uint(6) // log2 of the filter's size, one word at least
+	for 1<<bits < 16*len(r.touched) {
+		bits++
+	}
+	r.shift = 64 - bits
+	if bits > 6 {
+		r.large = make([]uint64, 1<<(bits-6))
+		r.small = ^uint64(0)
+	}
+	for _, u := range r.touched {
+		h := r.hash(int(u))
+		if r.large == nil {
+			r.small |= 1 << h
+		} else {
+			r.large[h>>6] |= 1 << (h & 63)
+		}
+	}
+
 	if base.HasNegativeWeight() {
 		for u := range n {
 			if slices.ContainsFunc(r.OutWeights(u), func(w float64) bool { return w < 0 }) {
@@ -226,16 +259,35 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	return r
 }
 
-// bit maps a node to one of 64 filter bits. The multiplier (2^64 over the
-// golden ratio) spreads nearby IDs, which are often touched together, across
-// the word.
-func bit(u int) uint64 { return 1 << (uint64(u) * 0x9e3779b97f4a7c15 >> 58) }
+// hash maps a node to a filter bit. The multiplier (2^64 over the golden
+// ratio) spreads nearby IDs, which are often touched together, across the
+// filter.
+func (r *Restricted) hash(u int) uint64 { return uint64(u) * golden >> r.shift }
+
+const golden = 0x9e3779b97f4a7c15
 
 // find returns the index of u in r.touched, or -1 when u's list is g's own.
+// It is kept small enough to inline into OutNeighbors and OutWeights, since
+// it runs on every call: a small view's one-word filter is tested here, which
+// rules out nearly every node, and everything else is left to lookup.
 func (r *Restricted) find(u int) int {
-	if r.filter&bit(u) == 0 {
+	// The same hash as r.hash, with the shift a constant.
+	if r.small&(1<<(uint64(u)*golden>>58)) == 0 {
 		return -1
 	}
+	return r.lookup(u)
+}
+
+// lookup is find's slow path: a large view's filter, then the search.
+func (r *Restricted) lookup(u int) int {
+	if h := r.hash(u); r.large != nil && r.large[h>>6]&(1<<(h&63)) == 0 {
+		return -1
+	}
+	return r.search(u)
+}
+
+// search finds u in r.touched by binary search, or returns -1.
+func (r *Restricted) search(u int) int {
 	lo, hi := 0, len(r.touched)
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)

@@ -139,12 +139,22 @@ func randomHidden(r *rand.Rand, g Adjacency) (nodes []int, edges [][2]int) {
 
 func TestRestrictedViewMatchesRebuiltGraph(t *testing.T) {
 	r := NewRand(3)
+	large := 0
 	for trial := range 600 {
 		directed, weighted := trial%2 == 0, trial%3 != 0
 		n := 2 + r.IntN(30)
 		g := randomGraph(r, directed, weighted, n, r.IntN(4*n))
 		nodes, edges := randomHidden(r, g)
-		checkView(t, g, RestrictedView(g, nodes, edges), nodes, edges)
+		v := RestrictedView(g, nodes, edges)
+		checkView(t, g, v, nodes, edges)
+		if v.large != nil {
+			large++
+		}
+	}
+	// Both filters, the single word and the one sized to many touched nodes,
+	// must have been through the check.
+	if large == 0 || large == 600 {
+		t.Errorf("%d of 600 views used the multi-word filter; the trials cover only one kind", large)
 	}
 }
 
@@ -281,18 +291,29 @@ func TestRestrictedViewOfView(t *testing.T) {
 	}
 }
 
+// lying embeds a Graph and overrides every Adjacency method with wrong
+// answers, which a view of it must ignore throughout.
+type lying struct{ *Graph }
+
+func (lying) OutNeighbors(int) []int32 { return nil }
+func (lying) OutWeights(int) []float64 { return nil }
+func (lying) Weighted() bool           { return false }
+func (lying) HasNegativeWeight() bool  { return false }
+
 func TestRestrictedViewOfEmbeddedGraph(t *testing.T) {
-	b := NewBuilder(3)
-	b.AddEdge(0, 1)
-	b.AddEdge(1, 2)
-	type labeled struct {
-		*Graph
-		names []string
+	b := NewBuilder(4)
+	b.AddEdgeW(0, 1, -1)
+	b.AddEdgeW(1, 2, 2)
+	b.AddEdgeW(2, 3, 3)
+	g := b.Build()
+	// Hiding {2, 1} changes the lists of 1 and 2 and leaves 0 and 3 alone, so
+	// both kinds of node are covered.
+	edges := [][2]int{{2, 1}}
+	got := RestrictedView(lying{g}, nil, edges)
+	if got.g != g {
+		t.Fatal("the view is not of the embedded graph")
 	}
-	v := RestrictedView(labeled{Graph: b.Build()}, nil, [][2]int{{2, 1}})
-	if got := v.OutNeighbors(1); !slices.Equal(got, []int32{0}) {
-		t.Errorf("OutNeighbors(1) = %v, want [0]", got)
-	}
+	checkView(t, g, got, nil, edges)
 }
 
 func TestRestrictedViewPanics(t *testing.T) {
