@@ -154,15 +154,18 @@ directed edges (Apple M3 Max; ratio vs gonx in parentheses):
 
 | operation | gonx | networkx | igraph | gonum |
 |---|---|---|---|---|
-| build | **79 ms** | 8.1 s (102×) | 332 ms (4.2×) | 3.2 s (40×) |
-| PageRank | **43 ms** | 3.7 s (86×) | 182 ms (4.3×) | 2.9 s (68×) |
-| weak components | 113 ms | 2.3 s (20×) | **26 ms (0.2×)** | 5.1 s (45×) |
-| BFS reachability | **39 ms** | 2.3 s (59×) | 145 ms (3.7×) | 2.1 s (55×) |
-| peak memory | **286 MB** | 3.0 GB | 1.6 GB | 2.7 GB |
+| build | **68 ms** | 7.6 s (112×) | 313 ms (4.6×) | 2.9 s (43×) |
+| PageRank | **40 ms** | 3.8 s (94×) | 180 ms (4.5×) | 2.6 s (64×) |
+| weak components | 106 ms | 2.2 s (21×) | **22 ms (0.2×)** | 4.8 s (45×) |
+| BFS reachability | **44 ms** | 2.4 s (55×) | 168 ms (3.9×) | 2.0 s (46×) |
+| Dijkstra (weighted) | **309 ms** | 5.9 s (19×) | 655 ms (2.1×) | 3.8 s (12×) |
+| peak memory | **287 MB** | 2.9 GB | 1.5 GB | 2.4 GB |
 
 igraph's C core wins weak components outright. networkx is the slowest
-but implements far more algorithms. The table measures these four
-operations on this workload, nothing broader.
+but implements far more algorithms. Peak memory is for the first four
+operations; Dijkstra runs in a separate process on a weighted copy of the
+graph. The table measures these five operations on this workload, nothing
+broader.
 
 ## Status
 

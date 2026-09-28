@@ -3,7 +3,8 @@
 // PageRank (damping 0.85, tolerance 1e-6), weakly connected components
 // (via the graph.Undirect adapter over topo.ConnectedComponents), and
 // BFS reachability over out-edges from the highest out-degree node
-// (traverse.BreadthFirst).
+// (traverse.BreadthFirst). With -op dijkstra it instead times
+// path.DijkstraFrom on a simple.WeightedDirectedGraph, in its own process.
 package main
 
 import (
@@ -11,12 +12,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"time"
 
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/network"
+	"gonum.org/v1/gonum/graph/path"
 	"gonum.org/v1/gonum/graph/simple"
 	"gonum.org/v1/gonum/graph/topo"
 	"gonum.org/v1/gonum/graph/traverse"
@@ -25,6 +28,7 @@ import (
 func main() {
 	in := flag.String("in", "", "edge list path (required)")
 	repeats := flag.Int("repeats", 3, "repeats per operation")
+	op := flag.String("op", "core", "core (build, pagerank, wcc, bfs) or dijkstra")
 	flag.Parse()
 	if *in == "" {
 		log.Fatal("-in is required")
@@ -32,6 +36,10 @@ func main() {
 
 	us, vs, n := readEdges(*in)
 	edges := len(us)
+	if *op == "dijkstra" {
+		benchDijkstra(us, vs, n, *repeats)
+		return
+	}
 
 	var g *simple.DirectedGraph
 	for i := range *repeats {
@@ -89,6 +97,49 @@ func main() {
 	// rule; scores are cross-checked for top-node agreement, not value.
 	fmt.Printf("#check,gonum,n=%d,edges=%d,pr_top=%d,pr_top_score=%.9f,wcc=%d,bfs_src=%d,bfs_reached=%d\n",
 		n, edges, top, topScore, len(comps), src, reached)
+}
+
+// edgeWeight matches gonxbench's: the same integer hash mapped to [1, 2).
+func edgeWeight(u, v int) float64 {
+	return 1 + float64((u*7919+v*104729)%1000)/1000
+}
+
+// benchDijkstra times path.DijkstraFrom, which computes the full
+// shortest-path tree from the source. Reading the distances back out is
+// not timed.
+func benchDijkstra(us, vs []int, n, repeats int) {
+	edges := len(us)
+	g := simple.NewWeightedDirectedGraph(0, math.Inf(1))
+	for u := range n {
+		g.AddNode(simple.Node(u))
+	}
+	outDeg := make([]int, n)
+	for j := range us {
+		g.SetWeightedEdge(g.NewWeightedEdge(simple.Node(us[j]), simple.Node(vs[j]), edgeWeight(us[j], vs[j])))
+		outDeg[us[j]]++
+	}
+	src := 0
+	for u := 1; u < n; u++ {
+		if outDeg[u] > outDeg[src] {
+			src = u
+		}
+	}
+	var sp path.Shortest
+	for i := range repeats {
+		start := time.Now()
+		sp = path.DijkstraFrom(g.Node(int64(src)), g)
+		emit("gonum", "dijkstra", n, edges, i, time.Since(start))
+	}
+	reached, sum, far := 0, 0.0, 0.0
+	for u := range n {
+		if d := sp.WeightTo(int64(u)); !math.IsInf(d, 1) {
+			reached++
+			sum += d
+			far = max(far, d)
+		}
+	}
+	fmt.Printf("#check,gonum,n=%d,edges=%d,sp_src=%d,sp_reached=%d,sp_sum=%.3f,sp_max=%.6f\n",
+		n, edges, src, reached, sum, far)
 }
 
 func readEdges(path string) (us, vs []int, n int) {
