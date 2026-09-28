@@ -6,7 +6,9 @@ Run after gen_edges.go, from anywhere:
 
 Writes <name>.dijkstra.json: for each of a fixed set of sources, the
 single-source shortest-path lengths as a dense list indexed by node, with -1
-for unreachable nodes. For undirected graphs it also writes <name>.cuts.json:
+for unreachable nodes, and <name>.restricted.json: the same over
+restricted_view with a few nodes and edges hidden, along with what was hidden.
+For undirected graphs it also writes <name>.cuts.json:
 the articulation points, and every bridge as [u, v, side], oriented so that v
 is on the side without the component's smallest node and side counts the
 nodes there. Requires networkx (the bench/ virtualenv has it).
@@ -18,6 +20,7 @@ import networkx as nx
 
 HERE = pathlib.Path(__file__).parent
 SOURCES = [0, 7, 42]
+HIDDEN_NODES = [3, 11]  # not among SOURCES: networkx has no path from a hidden node
 
 
 def load(path):
@@ -40,6 +43,20 @@ for path in sorted(HERE.glob("*.edges")):
     target = path.with_suffix(".dijkstra.json")
     with open(target, "w") as f:
         json.dump({"sources": out}, f, indent=0)
+    # Every ninth edge, and on an undirected graph every other one of those
+    # named backwards, since either spelling must hide the same edge.
+    hidden = [list(e) for e in list(g.edges())[::9]]
+    if not g.is_directed():
+        for e in hidden[::2]:
+            e.reverse()
+    view = nx.restricted_view(g, HIDDEN_NODES, [tuple(e) for e in hidden])
+    rout = {}
+    for s in SOURCES:
+        dist = nx.single_source_dijkstra_path_length(view, s)
+        rout[str(s)] = [dist.get(v, -1) for v in range(g.number_of_nodes())]
+    with open(path.with_suffix(".restricted.json"), "w") as f:
+        json.dump({"nodes": HIDDEN_NODES, "edges": hidden, "sources": rout}, f, indent=0)
+    print(f"{path.stem}.restricted.json: {len(hidden)} edges and {len(HIDDEN_NODES)} nodes hidden")
     if not g.is_directed():
         bridges = []
         for a, b in nx.bridges(g):
