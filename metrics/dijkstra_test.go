@@ -163,7 +163,7 @@ func checkTree(t *testing.T, g gonx.Adjacency, src int, dist []float64, prev []i
 }
 
 func TestDijkstraMatchesNetworkx(t *testing.T) {
-	for _, name := range []string{"ws_undirected", "er_directed"} {
+	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse"} {
 		t.Run(name, func(t *testing.T) {
 			g := loadEdges(t, name+".edges")
 			want := loadExpected(t, name+".dijkstra.json")
@@ -542,7 +542,7 @@ func TestShortestPath(t *testing.T) {
 // the fixtures: same length, a path that starts and ends where it should, and
 // edges whose weights add up to that length.
 func TestShortestPathMatchesDijkstra(t *testing.T) {
-	for _, name := range []string{"ws_undirected", "er_directed"} {
+	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse"} {
 		g := loadEdges(t, name+".edges")
 		n := g.NumNodes()
 		dist := make([]float64, n)

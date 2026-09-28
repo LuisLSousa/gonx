@@ -84,6 +84,24 @@ func main() {
 		}
 		write(filepath.Join(dir, "er_directed.edges"), "directed 80", lines)
 	}
+
+	// Undirected and sparse: Erdos-Renyi on 150 nodes at an average degree
+	// near 2, where a giant component with cycles coexists with trees hanging
+	// off it and small separate pieces, so bridges, cut nodes and isolated
+	// nodes all occur. The cuts tests read it; weights are there only because
+	// the format has them.
+	{
+		topo, err := generators.ErdosRenyi(150, 0.014, gonx.NewRand(11))
+		if err != nil {
+			panic(err)
+		}
+		w := &weigher{r: gonx.NewRand(12)}
+		var lines []string
+		for u, v := range topo.Edges() {
+			lines = append(lines, fmt.Sprintf("%d %d %.6f", u, v, w.next()))
+		}
+		write(filepath.Join(dir, "er_sparse.edges"), "undirected 150", lines)
+	}
 }
 
 func write(path, header string, lines []string) {
