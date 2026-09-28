@@ -1,15 +1,16 @@
 package gonx
 
 // Adjacency is the read-only view of a graph's outgoing edges that [Graph] and
-// [Digraph] share: how many nodes there are and, for each node, the edges
-// leaving it together with their weights when the graph has any. An algorithm
-// that only ever walks edges in their natural direction takes an Adjacency and
-// runs on either graph kind from a single implementation. On an undirected
+// [Digraph] share, and that a [Restricted] view of either provides too: how
+// many nodes there are and, for each node, the edges leaving it together with
+// their weights when the graph has any. An algorithm that only ever walks edges
+// in their natural direction takes an Adjacency and runs on either graph kind,
+// or on a view with parts hidden, from a single implementation. On an undirected
 // Graph the edges leaving u are its neighbors, since every edge can be walked
 // from either end; on a Digraph only the out-side is part of the view, and the
 // in-lists stay on the concrete type.
 //
-// The contract, which both graph kinds honor and which algorithms rely on:
+// The contract, which every implementation honors and which algorithms rely on:
 //
 //   - Node IDs are dense in [0, NumNodes).
 //   - OutNeighbors(u) lists the targets of u's outgoing edges in ascending
@@ -38,10 +39,12 @@ type Adjacency interface {
 	adjacency() // seals the interface to this package
 }
 
-func (*Graph) adjacency()   {}
-func (*Digraph) adjacency() {}
+func (*Graph) adjacency()      {}
+func (*Digraph) adjacency()    {}
+func (*Restricted) adjacency() {}
 
 var (
 	_ Adjacency = (*Graph)(nil)
 	_ Adjacency = (*Digraph)(nil)
+	_ Adjacency = (*Restricted)(nil)
 )

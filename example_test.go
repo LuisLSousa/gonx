@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/LuisLSousa/gonx"
+	"github.com/LuisLSousa/gonx/metrics"
 )
 
 func Example() {
@@ -165,4 +166,30 @@ func ExampleAdjacency() {
 	// Output:
 	// [2 5 3]
 	// [2 3 0]
+}
+
+func ExampleRestrictedView() {
+	// A ring 0-1-2-3 with a short cut from 0 to 2. Hiding the short cut
+	// answers "what is the best path if this edge were gone?" without
+	// copying the graph, and without changing it for anyone else reading it.
+	b := gonx.NewWeightedBuilder(4)
+	b.AddEdgeW(0, 1, 2)
+	b.AddEdgeW(1, 2, 2)
+	b.AddEdgeW(2, 3, 1)
+	b.AddEdgeW(3, 0, 1)
+	b.AddEdgeW(0, 2, 1)
+	g := b.Build()
+
+	path, length, _ := metrics.ShortestPath(g, 0, 2)
+	fmt.Println(path, length)
+	view := gonx.RestrictedView(g, nil, [][2]int{{0, 2}})
+	path, length, _ = metrics.ShortestPath(view, 0, 2)
+	fmt.Println(path, length)
+	// Hiding node 3 as well leaves the long way round.
+	path, length, _ = metrics.ShortestPath(gonx.RestrictedView(view, []int{3}, nil), 0, 2)
+	fmt.Println(path, length)
+	// Output:
+	// [0 2] 1
+	// [0 3 2] 2
+	// [0 1 2] 4
 }

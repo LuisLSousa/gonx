@@ -30,5 +30,6 @@ jobs:
         if: matrix.go == 'stable'
         run: |
           go test . -run '^$' -fuzz FuzzWeightsAligned -fuzztime 15s
+          go test . -run '^$' -fuzz FuzzRestrictedView -fuzztime 15s
           go test ./transform -run '^$' -fuzz FuzzDoubleEdgeSwap -fuzztime 15s
           go test ./metrics -run '^$' -fuzz FuzzCuts -fuzztime 15s

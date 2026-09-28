@@ -119,6 +119,11 @@ g := b.Build()
   `Digraph` share: node count, out-neighbors, out-weights. An algorithm that
   only walks edges forward takes an `Adjacency` and runs on either kind from
   one implementation. It is sealed to this package for now.
+- **Views with parts hidden.** `RestrictedView(g, nodes, edges)`, after
+  networkx's `restricted_view`, hides nodes and edges without copying the
+  graph, and is an `Adjacency` itself, so "the shortest path if this edge were
+  gone" is `ShortestPath` on a view. Only the lists that lose an entry are
+  copied; every other node reads the graph's own slices.
 - **Reproducible randomness.** Every randomized operation takes an explicit
   `*math/rand/v2.Rand`. The same seed and parameters give a byte-identical graph. The package
   never touches a global RNG.
@@ -131,7 +136,7 @@ g := b.Build()
 
 | Package | Contents |
 |---|---|
-| `gonx` | `Graph`/`Digraph` (CSR, optional edge weights), `Builder`/`DigraphBuilder` (+ `NewWeighted*`), `Adjacency`, iterators, `NewRand` |
+| `gonx` | `Graph`/`Digraph` (CSR, optional edge weights), `Builder`/`DigraphBuilder` (+ `NewWeighted*`), `Adjacency`, `RestrictedView`, iterators, `NewRand` |
 | `gonx/generators` | `WattsStrogatz`, `BarabasiAlbert`, `Complete`, `RandomAvgDegree`, `ErdosRenyi` |
 | `gonx/transform` | `DoubleEdgeSwap`, `RelabelNodes`, `Shuffle`, `Copy` |
 | `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS`/`BreadthFirst`, `Dijkstra`, `ShortestPath`, `Bridges`, `ArticulationPoints`, `PageRank`, `WeaklyConnectedComponents` |
