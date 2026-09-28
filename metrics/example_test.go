@@ -133,3 +133,31 @@ func ExampleShortestPath() {
 	// [0 1 2 3] 3
 	// true +Inf
 }
+
+func ExampleBridges() {
+	// Two triangles, 0-1-2 and 3-4-5, joined by the single edge 2-3, with
+	// node 6 hanging off 5. Each node carries a weight, here a user count.
+	b := gonx.NewBuilder(7)
+	for _, e := range [][2]int{{0, 1}, {1, 2}, {0, 2}, {2, 3}, {3, 4}, {4, 5}, {3, 5}, {5, 6}} {
+		b.AddEdge(e[0], e[1])
+	}
+	g := b.Build()
+	users := []float64{120, 80, 200, 40, 25, 60, 5}
+
+	for _, br := range metrics.Bridges(g, users) {
+		fmt.Printf("cutting %d-%d strands nodes: %d, users: %v\n", br.U, br.V, br.Side, br.SideWeight)
+	}
+	// Output:
+	// cutting 2-3 strands nodes: 4, users: 130
+	// cutting 5-6 strands nodes: 1, users: 5
+}
+
+func ExampleArticulationPoints() {
+	b := gonx.NewBuilder(7) // the same graph as in the Bridges example
+	for _, e := range [][2]int{{0, 1}, {1, 2}, {0, 2}, {2, 3}, {3, 4}, {4, 5}, {3, 5}, {5, 6}} {
+		b.AddEdge(e[0], e[1])
+	}
+	fmt.Println(metrics.ArticulationPoints(b.Build()))
+	// Output:
+	// [2 3 5]
+}

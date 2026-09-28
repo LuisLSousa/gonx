@@ -31,3 +31,4 @@ jobs:
         run: |
           go test . -run '^$' -fuzz FuzzWeightsAligned -fuzztime 15s
           go test ./transform -run '^$' -fuzz FuzzDoubleEdgeSwap -fuzztime 15s
+          go test ./metrics -run '^$' -fuzz FuzzCuts -fuzztime 15s
