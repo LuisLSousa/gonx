@@ -584,6 +584,7 @@ func TestShortestPathMatchesDijkstra(t *testing.T) {
 func BenchmarkShortestPath_10000(b *testing.B) {
 	g := weightedScaleFree(b)
 	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, _, err := ShortestPath(g, 0, 9999); err != nil {
 			b.Fatal(err)
@@ -595,6 +596,7 @@ func BenchmarkBreadthFirst_10000(b *testing.B) {
 	g := weightedScaleFree(b)
 	dist := make([]int32, g.NumNodes())
 	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		BreadthFirst(g, 0, dist)
 	}

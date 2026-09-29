@@ -139,7 +139,7 @@ g := b.Build()
 | `gonx` | `Graph`/`Digraph` (CSR, optional edge weights), `Builder`/`DigraphBuilder` (+ `NewWeighted*`), `Adjacency`, `RestrictedView`, iterators, `NewRand` |
 | `gonx/generators` | `WattsStrogatz`, `BarabasiAlbert`, `Complete`, `RandomAvgDegree`, `ErdosRenyi` |
 | `gonx/transform` | `DoubleEdgeSwap`, `RelabelNodes`, `Shuffle`, `Copy` |
-| `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS`/`BreadthFirst`, `Dijkstra`, `ShortestPath`, `Bridges`, `ArticulationPoints`, `PageRank`, `WeaklyConnectedComponents` |
+| `gonx/metrics` | `Transitivity`, `AverageClustering`, `AveragePathLength`(+`LCC`), `Diameter`, `ConnectedComponents`, `IsConnected`, `BFS`/`BreadthFirst`, `Dijkstra`, `ShortestPath`, `PathFinder`, `Bridges`, `ArticulationPoints`, `PageRank`, `WeaklyConnectedComponents` |
 
 > Note on `BarabasiAlbert(n, m, r)`: `m` is the number of edges added per new node
 > (matching networkx), **not** the average degree — the resulting average degree

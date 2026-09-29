@@ -161,3 +161,33 @@ func ExampleArticulationPoints() {
 	// Output:
 	// [2 3 5]
 }
+
+func ExamplePathFinder() {
+	// A path 0-1-2-3-4 with a heavier shortcut from 0 to 4. A PathFinder
+	// keeps its scratch between queries, so each one costs in proportion to
+	// the nodes it reaches; one serves the graph and views of it alike.
+	b := gonx.NewBuilder(5)
+	b.AddEdgeW(0, 1, 1)
+	b.AddEdgeW(1, 2, 1)
+	b.AddEdgeW(2, 3, 1)
+	b.AddEdgeW(3, 4, 1)
+	b.AddEdgeW(0, 4, 3)
+	g := b.Build()
+
+	var p metrics.PathFinder
+	for _, q := range [][2]int{{0, 2}, {0, 4}, {1, 4}} {
+		path, length, err := p.ShortestPath(g, q[0], q[1])
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(path, length)
+	}
+	// Without the shortcut, 0 to 4 is the long way round.
+	path, length, _ := p.ShortestPath(gonx.RestrictedView(g, nil, [][2]int{{0, 4}}), 0, 4)
+	fmt.Println(path, length)
+	// Output:
+	// [0 1 2] 2
+	// [0 4] 3
+	// [1 2 3 4] 3
+	// [0 1 2 3 4] 4
+}
