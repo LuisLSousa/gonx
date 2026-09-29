@@ -106,8 +106,9 @@ func dijkstra(caller string, g gonx.Adjacency, src, target int, dist []float64, 
 // The search stops as soon as dst is settled, so it expands only nodes no
 // farther from src than dst is. Each call still allocates and initializes O(n)
 // scratch, however near dst is, which dominates when many point-to-point
-// queries run on a large graph. For many targets from one source, call
-// Dijkstra once and follow its prev tree instead.
+// queries run on a large graph: a [PathFinder] keeps that scratch between
+// queries instead. For many targets from one source, call Dijkstra once and
+// follow its prev tree.
 func ShortestPath(g gonx.Adjacency, src, dst int) (path []int, length float64, err error) {
 	n := g.NumNodes()
 	if dst < 0 || dst >= n {
@@ -125,21 +126,27 @@ func ShortestPath(g gonx.Adjacency, src, dst int) (path []int, length float64, e
 	if err := dijkstra("ShortestPath", g, src, dst, dist, prev); err != nil {
 		return nil, 0, err
 	}
-	if math.IsInf(dist[dst], 1) {
-		return nil, dist[dst], nil
+	return pathTo(prev, src, dst, dist[dst]), dist[dst], nil
+}
+
+// pathTo follows prev back from dst to src and returns the nodes in order,
+// or nil when length says dst was not reached.
+func pathTo(prev []int32, src, dst int, length float64) []int {
+	if math.IsInf(length, 1) {
+		return nil
 	}
 	hops := 0
 	for v := dst; v != src; v = int(prev[v]) {
 		hops++
 	}
-	path = make([]int, hops+1)
+	path := make([]int, hops+1)
 	for v, i := dst, hops; ; v, i = int(prev[v]), i-1 {
 		path[i] = v
 		if v == src {
 			break
 		}
 	}
-	return path, dist[dst], nil
+	return path
 }
 
 // nodeHeap is a binary min-heap of node IDs ordered by their current tentative
