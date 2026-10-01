@@ -1,39 +1,50 @@
 """Confirms that every library computed the same answers, from the #check
-lines run.sh collects in results/checks.txt. Exits non-zero, naming each
-disagreement, when they differ, so a run whose libraries disagree fails
-instead of publishing timings for different work.
+lines the runners print and run.sh collects into one file. Exits non-zero,
+naming each disagreement, when they differ, so a run whose libraries
+disagree fails instead of publishing timings for different work.
 
 Lines are grouped by graph size and by run (the core run reports PageRank,
 components and BFS; the Dijkstra run reports shortest paths), and within a
-group every field must agree across libraries: exactly for counts and node
-IDs, and within a tolerance for the floats, where libraries that compute the
-same answer differently can still differ in the last digit printed.
+group every field must equal gonx's, with two exceptions:
 
-- pr_top_score, the top PageRank score, agrees to a relative 1e-3: the
-  libraries stop iterating on different criteria (see env.txt).
-- sp_sum, the sum of about n shortest-path distances printed to 3
-  decimals, and sp_max, printed to 6, agree to one unit in the last place
-  printed (or a relative 1e-9 on large sums): summing in a different order
-  moves the rounding.
-- pr_top, the top-ranked node, may differ when the top scores agree: two
-  hubs whose scores are that close can swap between runs of a library that
-  starts PageRank from a random vector, as gonum does.
+- The PageRank scores, pr_top_score and pr_second_score, agree to a relative
+  1e-3, since the libraries stop iterating on different criteria (see
+  env.txt).
+- gonum, whose PageRank starts from a random vector, may report the top two
+  nodes in the opposite order, but only when its own two scores are that
+  close, so that a swap between near-tied hubs passes and a wrong node does
+  not. Each node's score is then compared with gonx's score for that node.
+
+Shortest-path totals need no tolerance: the runners report them as integer
+thousandths, which every distance is (see edge_weight), so they are exact.
 """
 
+import math
 import sys
 from collections import defaultdict
 
 LIBS = {"gonx", "gonum", "networkx", "igraph"}
-# field -> (relative, absolute) tolerance; a value passes within either.
-# The absolute ones are a unit and a half in the last place printed, since a
-# difference of exactly one unit can come out a hair above it in floats.
-LOOSE = {"pr_top_score": (1e-3, 0), "sp_sum": (1e-9, 1.5e-3), "sp_max": (1e-9, 1.5e-6)}
+SCORES = {"pr_top_score", "pr_second_score"}
+SCORE_TOL = 1e-3
+# Libraries whose PageRank result varies between runs.
+NONDETERMINISTIC = {"gonum"}
 
 
-def close(key, got, want):
-    rel, abs_ = LOOSE[key]
-    a, b = float(got), float(want)
-    return abs(a - b) <= max(rel * max(abs(a), abs(b)), abs_)
+def close(a, b):
+    return math.isclose(float(a), float(b), rel_tol=SCORE_TOL)
+
+
+def swapped(fields, ref):
+    """fields with its top two exchanged, when they are gonx's top two in the
+    opposite order and sit as close as the scores are checked to; otherwise
+    None."""
+    if not (fields["pr_top"] == ref["pr_second"] and fields["pr_second"] == ref["pr_top"]
+            and close(fields["pr_top_score"], fields["pr_second_score"])):
+        return None
+    out = dict(fields)
+    out["pr_top"], out["pr_second"] = fields["pr_second"], fields["pr_top"]
+    out["pr_top_score"], out["pr_second_score"] = fields["pr_second_score"], fields["pr_top_score"]
+    return out
 
 
 def main(path):
@@ -58,18 +69,15 @@ def main(path):
             if set(fields) != set(ref):
                 problems.append(f"n={n} {run}: {lib} reports {sorted(fields)}, gonx {sorted(ref)}")
                 continue
+            if run == "core" and lib in NONDETERMINISTIC and fields["pr_top"] != ref["pr_top"]:
+                if (s := swapped(fields, ref)) is not None:
+                    print(f"note: n={n} {lib} ranks nodes {fields['pr_top']} and {fields['pr_second']} "
+                          f"in the opposite order to gonx, at scores {fields['pr_top_score']} and "
+                          f"{fields['pr_second_score']}")
+                    fields = s
             for key, want in ref.items():
                 got = fields[key]
-                if key in LOOSE:
-                    ok = close(key, got, want)
-                elif key == "pr_top" and got != want:
-                    ok = close("pr_top_score", fields["pr_top_score"], ref["pr_top_score"])
-                    if ok:
-                        print(f"note: n={n} {lib} ranks node {got} first, gonx node {want}, "
-                              f"with top scores {fields['pr_top_score']} and {ref['pr_top_score']}")
-                else:
-                    ok = got == want
-                if not ok:
+                if not (close(got, want) if key in SCORES else got == want):
                     problems.append(f"n={n} {run}: {lib} {key}={got}, gonx {want}")
 
     if not groups:

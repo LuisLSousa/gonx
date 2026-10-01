@@ -8,17 +8,20 @@ from this harness; run it yourself:
 cd bench
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run.sh                      # full suite: n = 10k / 100k / 1M, 3 repeats
-SIZES="10000" REPEATS=1 ./run.sh   # quick smoke run
+SIZES="10000" REPEATS=1 ./run.sh   # quick smoke run, kept in runs/
 ```
 
 Results land in `results/`: raw timings (`results.csv`), cross-library
 answer checks (`checks.txt`), and the exact environment (`env.txt`).
-The run fails if the libraries' answers in `checks.txt` disagree
-(`py/compare_checks.py`, exact on counts and node IDs, within the last
-printed digit on float sums), and then leaves `results/` as it was; a
-successful run replaces all three files together. `env.txt` marks the
-gonx commit `-dirty` when the tree had uncommitted changes. `requirements.txt` pins the Python
-packages to the versions the committed results used.
+Only a full run whose libraries agree replaces them, all three together.
+A run whose answers disagree fails, and a smoke run with other sizes or
+repeats is not published; either way its output stays in the `runs/`
+directory it names. `py/compare_checks.py` holds the answers to gonx's
+exactly, apart from PageRank scores, which agree to a relative 1e-3, and
+gonum's top two nodes, which may swap when gonum scores them that close.
+`env.txt` marks the gonx commit `-dirty` when the tree had uncommitted
+changes, and `requirements.txt` pins the Python packages to the versions
+the committed results used.
 
 ## What is measured
 
@@ -63,8 +66,8 @@ process per library (`-op dijkstra`); its peak RSS is recorded as
   calls are `metrics.Dijkstra` (gonx, result slice allocated inside the
   timing), `path.DijkstraFrom` (gonum), `single_source_dijkstra_path_length`
   (networkx) and `Graph.distances(..., algorithm="dijkstra")` (igraph).
-  All four report the same reach, distance sum and farthest distance in
-  `checks.txt`.
+  All four report the same reach, distance sum and farthest distance,
+  in exact thousandths, in `checks.txt`.
 - **PageRank stopping rules differ by library family and are pinned
   deliberately.** gonx and networkx share the rule L1 delta < n * tol;
   the harness sets tol = 1e-10 (not the networkx default of 1e-6,

@@ -68,12 +68,7 @@ func main() {
 		}
 		emit("gonx", "pagerank", n, edges, i, time.Since(start))
 	}
-	top, topScore := 0, rank[0]
-	for v, s := range rank {
-		if s > topScore {
-			top, topScore = v, s
-		}
-	}
+	top, second := topTwo(n, func(v int) float64 { return rank[v] })
 
 	var comps [][]int
 	for i := range *repeats {
@@ -104,8 +99,8 @@ func main() {
 		}
 	}
 
-	fmt.Printf("#check,gonx,n=%d,edges=%d,pr_top=%d,pr_top_score=%.9f,wcc=%d,bfs_src=%d,bfs_reached=%d\n",
-		n, edges, top, topScore, len(comps), src, reached)
+	fmt.Printf("#check,gonx,n=%d,edges=%d,pr_top=%d,pr_top_score=%.9f,pr_second=%d,pr_second_score=%.9f,wcc=%d,bfs_src=%d,bfs_reached=%d\n",
+		n, edges, top, rank[top], second, rank[second], len(comps), src, reached)
 }
 
 // edgeWeight is the weight every runner gives the edge u->v: a fixed
@@ -140,17 +135,40 @@ func benchDijkstra(us, vs []int, n, repeats int) {
 		}
 		emit("gonx", "dijkstra", n, edges, i, time.Since(start))
 	}
-	reached, sum, far := 0, 0.0, 0.0
+	reached, sum, far := 0, int64(0), int64(0)
 	for _, d := range dist {
 		if !math.IsInf(d, 1) {
 			reached++
-			sum += d
-			far = max(far, d)
+			sum += milli(d)
+			far = max(far, milli(d))
 		}
 	}
-	fmt.Printf("#check,gonx,n=%d,edges=%d,sp_src=%d,sp_reached=%d,sp_sum=%.3f,sp_max=%.6f\n",
+	fmt.Printf("#check,gonx,n=%d,edges=%d,sp_src=%d,sp_reached=%d,sp_sum_milli=%d,sp_max_milli=%d\n",
 		n, edges, src, reached, sum, far)
 }
+
+// topTwo returns the two highest-scoring of n nodes, ties going to the smaller
+// ID, as every runner picks them. The runner-up lets the check tell two hubs
+// whose scores are close enough to swap between runs from a wrong answer.
+func topTwo(n int, score func(int) float64) (first, second int) {
+	first, second = -1, -1
+	for v := range n {
+		s := score(v)
+		switch {
+		case first < 0 || s > score(first):
+			first, second = v, first
+		case second < 0 || s > score(second):
+			second = v
+		}
+	}
+	return first, second
+}
+
+// milli is a distance in thousandths. Every edge weight is a multiple of
+// 1/1000, so every distance is too, up to a float error far below half a
+// unit; summing milli values is exact, which lets the check compare the
+// libraries' totals digit for digit whatever order they add in.
+func milli(d float64) int64 { return int64(math.Round(d * 1000)) }
 
 // readEdges parses the "u v" edge list into two arrays and returns them
 // with the node count (max id + 1). This is deliberately outside all

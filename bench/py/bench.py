@@ -14,6 +14,7 @@ runners: "lib,op,n,edges,repeat,seconds" plus a #check line.
 """
 
 import argparse
+import heapq
 import time
 
 
@@ -38,11 +39,19 @@ def edge_weight(u, v):
     return 1 + ((u * 7919 + v * 104729) % 1000) / 1000
 
 
+def top_two(n, score):
+    """The two highest-scoring nodes, ties going to the smaller ID, as the
+    Go runners pick them."""
+    return heapq.nsmallest(2, range(n), key=lambda v: (-score(v), v))
+
+
 def check_sp(lib, n, edges, src, dists):
-    finite = [d for d in dists if d != float("inf")]
+    # Distances in thousandths: every weight is a multiple of 1/1000, so the
+    # integer totals are exact and compare digit for digit across libraries.
+    finite = [round(d * 1000) for d in dists if d != float("inf")]
     print(
         f"#check,{lib},n={n},edges={edges},sp_src={src},sp_reached={len(finite)},"
-        f"sp_sum={sum(finite):.3f},sp_max={max(finite):.6f}",
+        f"sp_sum_milli={sum(finite)},sp_max_milli={max(finite)}",
         flush=True,
     )
 
@@ -104,7 +113,7 @@ def bench_networkx(us, vs, n, repeats):
         # threshold 1.0 (a couple of iterations). See bench/README.md.
         rank = nx.pagerank(G, alpha=0.85, tol=1e-10, max_iter=200)
         emit("networkx", "pagerank", n, edges, i, time.perf_counter() - start)
-    top = max(rank, key=rank.get)
+    top, second = top_two(n, rank.__getitem__)
 
     comps = None
     for i in range(repeats):
@@ -120,8 +129,9 @@ def bench_networkx(us, vs, n, repeats):
         emit("networkx", "bfs", n, edges, i, time.perf_counter() - start)
 
     print(
-        f"#check,networkx,n={n},edges={edges},pr_top={top},"
-        f"pr_top_score={rank[top]:.9f},wcc={len(comps)},bfs_src={src},bfs_reached={reached}",
+        f"#check,networkx,n={n},edges={edges},pr_top={top},pr_top_score={rank[top]:.9f},"
+        f"pr_second={second},pr_second_score={rank[second]:.9f},"
+        f"wcc={len(comps)},bfs_src={src},bfs_reached={reached}",
         flush=True,
     )
 
@@ -143,7 +153,7 @@ def bench_igraph(us, vs, n, repeats):
         start = time.perf_counter()
         rank = G.pagerank(damping=0.85)  # PRPACK direct solver, no tol knob
         emit("igraph", "pagerank", n, edges, i, time.perf_counter() - start)
-    top = max(range(n), key=lambda v: rank[v])
+    top, second = top_two(n, rank.__getitem__)
 
     # Each repeat runs on a copy of G made outside the timing: igraph caches
     # whether a graph is connected, so a second call on the same object
@@ -169,8 +179,9 @@ def bench_igraph(us, vs, n, repeats):
         emit("igraph", "bfs", n, edges, i, time.perf_counter() - start)
 
     print(
-        f"#check,igraph,n={n},edges={edges},pr_top={top},"
-        f"pr_top_score={rank[top]:.9f},wcc={ncomps},bfs_src={src},bfs_reached={reached}",
+        f"#check,igraph,n={n},edges={edges},pr_top={top},pr_top_score={rank[top]:.9f},"
+        f"pr_second={second},pr_second_score={rank[second]:.9f},"
+        f"wcc={ncomps},bfs_src={src},bfs_reached={reached}",
         flush=True,
     )
 

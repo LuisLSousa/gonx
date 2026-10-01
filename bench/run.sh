@@ -3,30 +3,38 @@
 # Barabasi-Albert edge lists, each (library, size) pair in its own
 # process under /usr/bin/time -l so peak RSS is captured per run.
 #
-# Outputs, written to a scratch directory and moved into results/ only once
-# the libraries' answers agree, so a failed run leaves the committed results
-# as they were:
+# Outputs, replaced together by a run with the default sizes and repeats
+# whose libraries agree (py/compare_checks.py):
 #   results/results.csv   lib,op,n,edges,repeat,seconds (+ mem rows in bytes)
-#   results/checks.txt    per-library #check lines, compared at the end
+#   results/checks.txt    per-library #check lines
 #   results/env.txt       hardware, OS, toolchain, library versions
+# A run that fails, or one with SIZES or REPEATS set otherwise, such as the
+# smoke run in README.md, leaves results/ as it was and keeps its output in
+# the runs/ directory it names.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# The commit the numbers come from. Any other change in the tree marks it dirty, since the commit alone would
-# then not reproduce them.
+# The commit the numbers come from. Any other change in the tree marks it
+# dirty, since the commit alone would then not reproduce them.
 GONX_REV=$(git rev-parse --short HEAD)
 if [ -n "$(git status --porcelain -- .. ':!results')" ]; then
   GONX_REV="$GONX_REV-dirty"
   echo "warning: uncommitted changes; env.txt will record $GONX_REV" >&2
 fi
 
-SIZES="${SIZES:-10000 100000 1000000}"
+DEFAULT_SIZES="10000 100000 1000000"
+DEFAULT_REPEATS=3
+SIZES="${SIZES:-$DEFAULT_SIZES}"
 M=5
 SEED=42
-REPEATS="${REPEATS:-3}"
+REPEATS="${REPEATS:-$DEFAULT_REPEATS}"
 
-mkdir -p data results
-OUT=$(mktemp -d)
+mkdir -p data results runs
+# Staged beside results/, on the same filesystem, so that publishing is three
+# renames that cannot run out of space part way.
+OUT=$(mktemp -d runs/run.XXXXXX)
+published=0
+trap '[ "$published" = 1 ] || echo "results/ left unchanged; output of this run is in bench/$OUT" >&2' EXIT
 : > "$OUT/results.csv"
 : > "$OUT/checks.txt"
 
@@ -90,10 +98,16 @@ done
   echo "  timings exclude file parsing; peak RSS per whole process via /usr/bin/time -l"
 } > "$OUT/env.txt"
 
-if ! "$PY" py/compare_checks.py "$OUT/checks.txt"; then
-  echo "results/ left unchanged; this run's output is in $OUT" >&2
-  exit 1
+"$PY" py/compare_checks.py "$OUT/checks.txt" # a disagreement exits here
+if [ "$SIZES" != "$DEFAULT_SIZES" ] || [ "$REPEATS" != "$DEFAULT_REPEATS" ]; then
+  echo "SIZES or REPEATS differ from the defaults, so results/ is not replaced" >&2
+  exit 0
 fi
-mv "$OUT/results.csv" "$OUT/checks.txt" "$OUT/env.txt" results/
+# Renames within one filesystem are atomic and need no space, so only a kill
+# between them could leave results/ with old and new files mixed.
+for f in results.csv checks.txt env.txt; do
+  mv "$OUT/$f" "results/$f"
+done
+published=1
 rmdir "$OUT"
 echo "done -> results/"

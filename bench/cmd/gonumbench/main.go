@@ -59,13 +59,7 @@ func main() {
 		rank = network.PageRankSparse(g, 0.85, 1e-6)
 		emit("gonum", "pagerank", n, edges, i, time.Since(start))
 	}
-	var top int64
-	topScore := -1.0
-	for v, s := range rank {
-		if s > topScore || (s == topScore && v < top) {
-			top, topScore = v, s
-		}
-	}
+	top, second := topTwo(n, func(v int) float64 { return rank[int64(v)] })
 
 	var comps [][]graph.Node
 	for i := range *repeats {
@@ -93,10 +87,11 @@ func main() {
 		emit("gonum", "bfs", n, edges, i, time.Since(start))
 	}
 
-	// gonum's PageRank normalizes differently from the n*tol L1 stopping
-	// rule; scores are cross-checked for top-node agreement, not value.
-	fmt.Printf("#check,gonum,n=%d,edges=%d,pr_top=%d,pr_top_score=%.9f,wcc=%d,bfs_src=%d,bfs_reached=%d\n",
-		n, edges, top, topScore, len(comps), src, reached)
+	// gonum's PageRank stops on an absolute L1 tolerance rather than the
+	// n*tol rule and starts from a random vector, so its scores are checked
+	// to a relative 1e-3, and its top two may swap when they are that close.
+	fmt.Printf("#check,gonum,n=%d,edges=%d,pr_top=%d,pr_top_score=%.9f,pr_second=%d,pr_second_score=%.9f,wcc=%d,bfs_src=%d,bfs_reached=%d\n",
+		n, edges, top, rank[int64(top)], second, rank[int64(second)], len(comps), src, reached)
 }
 
 // edgeWeight matches gonxbench's: the same integer hash mapped to [1, 2).
@@ -130,17 +125,40 @@ func benchDijkstra(us, vs []int, n, repeats int) {
 		sp = path.DijkstraFrom(g.Node(int64(src)), g)
 		emit("gonum", "dijkstra", n, edges, i, time.Since(start))
 	}
-	reached, sum, far := 0, 0.0, 0.0
+	reached, sum, far := 0, int64(0), int64(0)
 	for u := range n {
 		if d := sp.WeightTo(int64(u)); !math.IsInf(d, 1) {
 			reached++
-			sum += d
-			far = max(far, d)
+			sum += milli(d)
+			far = max(far, milli(d))
 		}
 	}
-	fmt.Printf("#check,gonum,n=%d,edges=%d,sp_src=%d,sp_reached=%d,sp_sum=%.3f,sp_max=%.6f\n",
+	fmt.Printf("#check,gonum,n=%d,edges=%d,sp_src=%d,sp_reached=%d,sp_sum_milli=%d,sp_max_milli=%d\n",
 		n, edges, src, reached, sum, far)
 }
+
+// topTwo returns the two highest-scoring of n nodes, ties going to the smaller
+// ID, as every runner picks them. The runner-up lets the check tell two hubs
+// whose scores are close enough to swap between runs from a wrong answer.
+func topTwo(n int, score func(int) float64) (first, second int) {
+	first, second = -1, -1
+	for v := range n {
+		s := score(v)
+		switch {
+		case first < 0 || s > score(first):
+			first, second = v, first
+		case second < 0 || s > score(second):
+			second = v
+		}
+	}
+	return first, second
+}
+
+// milli is a distance in thousandths. Every edge weight is a multiple of
+// 1/1000, so every distance is too, up to a float error far below half a
+// unit; summing milli values is exact, which lets the check compare the
+// libraries' totals digit for digit whatever order they add in.
+func milli(d float64) int64 { return int64(math.Round(d * 1000)) }
 
 func readEdges(path string) (us, vs []int, n int) {
 	f, err := os.Open(path)
