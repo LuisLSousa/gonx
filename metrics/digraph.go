@@ -19,8 +19,11 @@ var ErrNoConvergence = errors.New("gonx/metrics: power iteration did not converg
 // With probability damping the surfer follows a uniformly random outgoing
 // edge; otherwise it jumps to a uniformly random node. Nodes with no outgoing
 // edges (dangling nodes) contribute their rank uniformly to all nodes, the
-// standard correction. Scores sum to 1. This matches networkx.pagerank; the
-// conventional damping factor is 0.85.
+// standard correction. Scores sum to 1; the conventional damping factor is
+// 0.85. Edge weights are ignored, so on a weighted Digraph every outgoing edge
+// is still equally likely. This matches networkx.pagerank(G, weight=None);
+// networkx's default reads a "weight" attribute and splits each node's rank in
+// proportion to it, which gives different scores on a weighted graph.
 //
 // Iteration stops when the total absolute change in one pass drops below
 // n * tolerance (networkx's criterion; a tolerance of 1e-6 is a sensible

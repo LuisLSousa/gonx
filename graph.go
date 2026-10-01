@@ -187,9 +187,11 @@ func (b *Builder) AddEdgeW(u, v int, w float64) bool {
 // Builder weight lists cover only a prefix of their neighbor list; positions past
 // the end hold the implicit weight 1. The representation exists for one reason:
 // it keeps every trace of weight bookkeeping out of AddEdge and AddEdgeUnchecked,
-// whose bodies are therefore unchanged from the unweighted library and still
-// small enough to inline at call sites. Even a single nil test in them pushed
-// them over the inliner's budget and cost every unweighted add a real call.
+// whose bodies are therefore unchanged from the unweighted library. That
+// matters most for AddEdgeUnchecked, the generators' path, which is small
+// enough to inline at call sites: even a single nil test in it pushed it over
+// the inliner's budget and cost every unweighted add a real call. AddEdge,
+// with its duplicate scan, was over the budget before weights existed.
 // Build expands the prefix (denseWeights) before sorting each row.
 
 // appendWeight records w as the weight of the neighbor at position pos,

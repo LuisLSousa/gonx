@@ -154,11 +154,16 @@ func BreadthFirst(g gonx.Adjacency, src int, dist []int32) {
 	bfsAdjacency(g, src, dist, make([]int32, 0, g.NumNodes()))
 }
 
-// BFS is [BreadthFirst] for an undirected Graph. It predates BreadthFirst and
-// keeps its signature so that code holding it as a function value still
-// compiles. It also keeps its concrete-type loop, which the all-pairs metrics
-// in this package are built on, since going through the interface would cost a
-// dynamic call per visited node.
+// BFS fills dist with shortest-path distances from src on an undirected Graph,
+// as [BreadthFirst] does; dist[v] == -1 means v is unreachable from src. dist
+// must have length g.NumNodes(). Unlike BreadthFirst it does not check its
+// arguments: a src out of range panics with a runtime index error, and the
+// result is unspecified when dist has the wrong length.
+//
+// BFS predates BreadthFirst and keeps its signature so that code holding it as
+// a function value still compiles. It also keeps its concrete-type loop, which
+// the all-pairs metrics in this package are built on, since going through the
+// interface would cost a dynamic call per visited node.
 func BFS(g *gonx.Graph, src int, dist []int32) {
 	bfsDistances(g, src, dist, make([]int32, 0, g.NumNodes()))
 }
