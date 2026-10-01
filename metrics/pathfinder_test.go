@@ -14,24 +14,21 @@ import (
 )
 
 // checkClean verifies the invariant a PathFinder relies on between queries:
-// every entry outside the last query's touched list is in its initial state,
-// up to the full capacity, and the touched list holds each node once.
+// the last query reset everything it touched, so the touched list and the heap
+// are empty and every entry, up to the full capacity, is in its initial state.
 func checkClean(t *testing.T, p *PathFinder) {
 	t.Helper()
-	touched := map[int32]bool{}
-	for _, v := range p.touched {
-		if touched[v] {
-			t.Fatalf("node %d is recorded twice", v)
-		}
-		touched[v] = true
+	s := p.s
+	if s == nil {
+		return
 	}
-	dist, prev, pos := p.dist[:cap(p.dist)], p.prev[:cap(p.prev)], p.heap.pos[:cap(p.heap.pos)]
+	if len(s.touched) != 0 || len(s.heap.nodes) != 0 {
+		t.Fatalf("%d touched nodes and %d heap entries left after a query", len(s.touched), len(s.heap.nodes))
+	}
+	dist, prev, pos := s.dist[:cap(s.dist)], s.prev[:cap(s.prev)], s.heap.pos[:cap(s.heap.pos)]
 	for v := range dist {
-		if touched[int32(v)] {
-			continue
-		}
 		if !math.IsInf(dist[v], 1) || prev[v] != -1 || pos[v] != -1 {
-			t.Fatalf("node %d was not reached but holds dist %v, prev %d, pos %d", v, dist[v], prev[v], pos[v])
+			t.Fatalf("node %d holds dist %v, prev %d, pos %d after a query", v, dist[v], prev[v], pos[v])
 		}
 	}
 }
@@ -288,6 +285,101 @@ func TestPathFinderCopy(t *testing.T) {
 	wantPath, wantLength, _ := ShortestPath(g, 9999, 0)
 	if !slices.Equal(path, wantPath) || length != wantLength {
 		t.Errorf("template after its copies ran: %v, %v; want %v, %v", path, length, wantPath, wantLength)
+	}
+}
+
+// TestPathFinderSavedCopy assigns a copy taken before a query back over the
+// original after it, so that the copy's view of the scratch is out of date
+// unless the scratch keeps its own record of what is dirty.
+func TestPathFinderSavedCopy(t *testing.T) {
+	b := gonx.NewBuilder(6)
+	for i := range 5 {
+		b.AddEdge(i, i+1)
+	}
+	g := b.Build()
+	var p PathFinder
+	p.ShortestPath(g, 0, 0)
+	saved := p
+	p.ShortestPath(g, 5, 0)
+	p = saved
+	if path, length, _ := p.ShortestPath(g, 0, 5); !slices.Equal(path, []int{0, 1, 2, 3, 4, 5}) || length != 5 {
+		t.Errorf("restored copy, 0 to 5: %v, %v; want [0 1 2 3 4 5], 5", path, length)
+	}
+	if path, length, _ := p.ShortestPath(g, 1, 3); !slices.Equal(path, []int{1, 2, 3}) || length != 2 {
+		t.Errorf("restored copy, 1 to 3: %v, %v; want [1 2 3], 2", path, length)
+	}
+	checkClean(t, &p)
+}
+
+// faulty panics when a search expands node bad, standing in for an Adjacency
+// wrapper that breaks part way through a query.
+type faulty struct {
+	gonx.Adjacency
+	bad int
+}
+
+func (f faulty) OutNeighbors(u int) []int32 {
+	if u == f.bad {
+		panic("faulty: node expanded")
+	}
+	return f.Adjacency.OutNeighbors(u)
+}
+
+// TestPathFinderAfterPanic cuts a query short with a panic mid-search, which
+// leaves the scratch dirty, and checks that the next query, on the PathFinder
+// itself or on a copy saved before the panic and assigned back, still answers
+// like a fresh search.
+func TestPathFinderAfterPanic(t *testing.T) {
+	g := weightedScaleFree(t)
+	for _, restore := range []bool{false, true} {
+		var p PathFinder
+		p.ShortestPath(g, 0, 1)
+		saved := p
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("the faulty graph did not panic")
+				}
+			}()
+			p.ShortestPath(faulty{g, int(g.Neighbors(0)[0])}, 0, 9999)
+		}()
+		if restore {
+			p = saved
+		}
+		path, length, _ := p.ShortestPath(g, 0, 9999)
+		wantPath, wantLength, _ := ShortestPath(g, 0, 9999)
+		if !slices.Equal(path, wantPath) || length != wantLength {
+			t.Errorf("restore %v: after the panic, %v, %v; want %v, %v", restore, path, length, wantPath, wantLength)
+		}
+		checkClean(t, &p)
+	}
+}
+
+// TestPathFinderCopySequences runs random sequences of queries, copies and
+// assignments over a few PathFinder variables, the moves under which state
+// shared between copies would show, and compares every answer with a fresh
+// search.
+func TestPathFinderCopySequences(t *testing.T) {
+	r := rand.New(rand.NewPCG(5, 6))
+	for range 50 {
+		g := randomWeightedGraph(r, r.IntN(2) == 0, true, false, 2+r.IntN(40), r.IntN(120))
+		n := g.NumNodes()
+		var vars [3]PathFinder
+		for range 60 {
+			i, j := r.IntN(len(vars)), r.IntN(len(vars))
+			switch r.IntN(3) {
+			case 0:
+				vars[j] = vars[i]
+			default:
+				src, dst := r.IntN(n), r.IntN(n)
+				path, length, _ := vars[i].ShortestPath(g, src, dst)
+				wantPath, wantLength, _ := ShortestPath(g, src, dst)
+				if !slices.Equal(path, wantPath) || length != wantLength {
+					t.Fatalf("variable %d, %d to %d: %v, %v; want %v, %v", i, src, dst, path, length, wantPath, wantLength)
+				}
+				checkClean(t, &vars[i])
+			}
+		}
 	}
 }
 
