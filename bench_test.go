@@ -49,6 +49,19 @@ func BenchmarkRelabelStar_20000(b *testing.B) {
 	}
 }
 
+// BenchmarkDigraphFanOut_20000 adds a hub's out-edges to new targets one at a
+// time through the checked AddEdgeW, the directed case where a duplicate check
+// that always scans the hub's list goes quadratic in its out-degree.
+func BenchmarkDigraphFanOut_20000(b *testing.B) {
+	const n = 20_000
+	for i := 0; i < b.N; i++ {
+		db := gonx.NewWeightedDigraphBuilder(n)
+		for v := 1; v < n; v++ {
+			db.AddEdgeW(0, v, float64(v))
+		}
+	}
+}
+
 // BenchmarkNeighborIteration measures the simulation's hot path; it should be
 // allocation-free (run with -benchmem).
 func BenchmarkNeighborIteration(b *testing.B) {

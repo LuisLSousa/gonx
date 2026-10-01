@@ -297,3 +297,46 @@ func TestDigraphRandomInNeighbor(t *testing.T) {
 		t.Errorf("200 draws from 3 in-neighbors hit %d distinct values", len(seen))
 	}
 }
+
+// TestDigraphBuilderHasEdgeAgainstSet drives a DigraphBuilder with random
+// adds, unchecked adds of new edges and removals, and checks HasEdge on every
+// pair against a set after each step. HasEdge answers from the in-degree
+// alone when a target has none, so this is where a count gone stale would
+// show.
+func TestDigraphBuilderHasEdgeAgainstSet(t *testing.T) {
+	r := NewRand(8)
+	const n = 7
+	b := NewDigraphBuilder(n)
+	edges := map[[2]int]bool{}
+	for step := range 400 {
+		u, v := r.IntN(n), r.IntN(n)
+		e := [2]int{u, v}
+		switch r.IntN(3) {
+		case 0:
+			got, want := b.AddEdge(u, v), u != v && !edges[e]
+			if got != want {
+				t.Fatalf("step %d: AddEdge(%d, %d) = %v, want %v", step, u, v, got, want)
+			}
+			if got {
+				edges[e] = true
+			}
+		case 1:
+			if u != v && !edges[e] {
+				b.AddEdgeUnchecked(u, v)
+				edges[e] = true
+			}
+		case 2:
+			if got, want := b.RemoveEdge(u, v), edges[e]; got != want {
+				t.Fatalf("step %d: RemoveEdge(%d, %d) = %v, want %v", step, u, v, got, want)
+			}
+			delete(edges, e)
+		}
+		for x := range n {
+			for y := range n {
+				if got := b.HasEdge(x, y); got != edges[[2]int{x, y}] {
+					t.Fatalf("step %d: HasEdge(%d, %d) = %v, want %v", step, x, y, got, edges[[2]int{x, y}])
+				}
+			}
+		}
+	}
+}

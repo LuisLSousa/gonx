@@ -77,19 +77,29 @@ func (b *DigraphBuilder) AddNode() int {
 	return len(b.out) - 1
 }
 
-// HasEdge reports whether the directed edge u->v exists. O(outdeg(u)).
+// HasEdge reports whether the directed edge u->v exists: O(1) when v has no
+// in-edges, and otherwise O(outdeg(u)).
 func (b *DigraphBuilder) HasEdge(u, v int) bool {
 	if u < 0 || u >= len(b.out) || v < 0 || v >= len(b.out) {
 		return false
 	}
-	vv := int32(v)
-	return slices.Contains(b.out[u], vv)
+	// The builder counts in-edges but does not list them, so a target with
+	// none is the one case it can rule out without scanning u's list. It is
+	// the case of a node's edges going out to new targets one at a time,
+	// which would otherwise rescan the growing list for every edge.
+	if b.inDegrees[v] == 0 {
+		return false
+	}
+	return slices.Contains(b.out[u], int32(v))
 }
 
 // AddEdge inserts the directed edge u->v. It returns false (and does nothing)
 // for self-loops, out-of-range endpoints, or edges that already exist, so the
 // resulting graph is always simple. Inserting v->u afterwards is a distinct
-// edge and succeeds.
+// edge and succeeds. The duplicate check is [DigraphBuilder.HasEdge], so adding
+// many edges out of one node to targets that already have in-edges costs time
+// quadratic in that node's out-degree; [DigraphBuilder.AddEdgeUnchecked]
+// skips the check when the input is known to be simple.
 func (b *DigraphBuilder) AddEdge(u, v int) bool {
 	n := len(b.out)
 	if u == v || u < 0 || v < 0 || u >= n || v >= n {
