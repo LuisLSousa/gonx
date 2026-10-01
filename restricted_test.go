@@ -1,6 +1,7 @@
 package gonx
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"slices"
 	"testing"
@@ -346,6 +347,29 @@ func TestRestrictedViewOfInterfaceWrapper(t *testing.T) {
 		t.Fatal("wrapped view: the result is not over the original graph")
 	}
 	checkView(t, g, got, []int{3}, edges)
+}
+
+// TestRestrictedViewNilPanics pins that a nil graph, bare or inside a
+// wrapper, panics with a message naming RestrictedView and the type, rather
+// than with a nil dereference.
+func TestRestrictedViewNilPanics(t *testing.T) {
+	for _, c := range []struct {
+		g    Adjacency
+		want string
+	}{
+		{nil, "gonx: RestrictedView: nil Adjacency"},
+		{decorator{}, "gonx: RestrictedView: gonx.decorator wraps no graph"},
+		{decorator{decorator{}}, "gonx: RestrictedView: gonx.decorator wraps no graph"},
+	} {
+		func() {
+			defer func() {
+				if got := fmt.Sprint(recover()); got != c.want {
+					t.Errorf("RestrictedView(%#v) panics with %q, want %q", c.g, got, c.want)
+				}
+			}()
+			RestrictedView(c.g, nil, nil)
+		}()
+	}
 }
 
 func TestRestrictedViewPanics(t *testing.T) {

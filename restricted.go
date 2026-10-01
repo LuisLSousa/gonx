@@ -111,7 +111,7 @@ func (g *Digraph) outCSR() ([]int32, []int32, []float64) {
 // O(k²) over k steps; pass them to one call instead.
 func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	var base restrictable
-	switch b := g.adjacency().(type) {
+	switch b := underlying(g).(type) {
 	case *Restricted:
 		base = b.g
 		nodes = append(slices.Clip(b.hiddenNodes), nodes...)
@@ -162,8 +162,9 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	cut = slices.Compact(cut)
 
 	weighted := base.Weighted()
-	// The negative entries among those the view drops; whatever g has beyond
-	// them is still visible.
+	// The negative entries among those the view drops, counted only when g
+	// has any: whatever g has beyond them is still visible.
+	countNegative := base.negativeEntries() > 0
 	droppedNegative := 0
 	r.offsets = []int32{0}
 	if weighted {
@@ -189,7 +190,7 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 				drop = drop[1:]
 			}
 			if len(drop) > 0 && drop[0] == key(u, int(v)) {
-				if weighted && ws[i] < 0 {
+				if countNegative && ws[i] < 0 {
 					droppedNegative++
 				}
 				continue
@@ -227,9 +228,11 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 			if len(base.OutNeighbors(u)) > 0 {
 				touch(u) // with nothing appended, an empty list
 			}
-			for _, w := range base.OutWeights(u) {
-				if w < 0 {
-					droppedNegative++
+			if countNegative {
+				for _, w := range base.OutWeights(u) {
+					if w < 0 {
+						droppedNegative++
+					}
 				}
 			}
 		} else {
@@ -258,6 +261,22 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 
 	r.negative = base.negativeEntries() > droppedNegative
 	return r
+}
+
+// underlying returns the Graph, Digraph or Restricted that g is or wraps. A
+// nil g, or a wrapper whose embedded Adjacency is nil, would otherwise fail
+// with a bare nil dereference in the promoted method call; this names the
+// function and the type instead.
+func underlying(g Adjacency) Adjacency {
+	if g == nil {
+		panic("gonx: RestrictedView: nil Adjacency")
+	}
+	defer func() {
+		if recover() != nil {
+			panic(fmt.Sprintf("gonx: RestrictedView: %T wraps no graph", g))
+		}
+	}()
+	return g.adjacency()
 }
 
 // hash maps a node to a filter bit. The multiplier (2^64 over the golden
