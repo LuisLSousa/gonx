@@ -129,7 +129,7 @@ func (s *pathScratch) reset() {
 // kept in its initial state between queries, so shrinking and regrowing within
 // it needs no initialization either.
 func (p *PathFinder) prepare(n int) *pathScratch {
-	if p.self != p || p.s == nil {
+	if p.self != p { // the zero value, whose self is nil, or a copy
 		p.self, p.s = p, new(pathScratch)
 	}
 	s := p.s

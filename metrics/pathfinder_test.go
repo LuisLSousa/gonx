@@ -240,10 +240,10 @@ func TestPathFinderPanicOrder(t *testing.T) {
 	}
 }
 
-// TestPathFinderCopy copies a PathFinder after it has run, which shares its
-// arrays but not its record of what the last query touched. Each copy must
-// answer like a fresh search, and so must the original afterwards, whether the
-// copies run one after another or, under -race, at once.
+// TestPathFinderCopy copies a PathFinder after it has run. A copy holds the
+// same scratch until its first query gives it its own, so each copy must
+// answer like a fresh search, and so must the original afterwards, whether
+// the copies run one after another or, under -race, at once.
 func TestPathFinderCopy(t *testing.T) {
 	b := gonx.NewBuilder(6)
 	for i := range 5 {
