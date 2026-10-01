@@ -288,10 +288,10 @@ func denseWeights(ws []float64, dst []float64) []float64 {
 // packed (neighbor, position) keys, a plain slices.Sort over uint64s, and then
 // gathers. Neighbors within a list are distinct and non-negative, so the high
 // word orders the keys by neighbor and the low word says where each weight came
-// from. keys is caller-provided scratch of at least len(nbrs). It reports
-// whether any weight is below zero (-0 is not), so Build learns that without a
+// from. keys is caller-provided scratch of at least len(nbrs). It returns how
+// many weights are below zero (-0 is not), so Build learns that without a
 // second pass over the weights.
-func copySorted(nbrs []int32, ws []float64, dst []int32, dstW []float64, keys []uint64) (negative bool) {
+func copySorted(nbrs []int32, ws []float64, dst []int32, dstW []float64, keys []uint64) (negatives int) {
 	keys = keys[:len(nbrs)]
 	for i, v := range nbrs {
 		keys[i] = uint64(v)<<32 | uint64(i)
@@ -301,9 +301,11 @@ func copySorted(nbrs []int32, ws []float64, dst []int32, dstW []float64, keys []
 		w := ws[uint32(k)]
 		dst[i] = int32(k >> 32)
 		dstW[i] = w
-		negative = negative || w < 0
+		if w < 0 {
+			negatives++
+		}
 	}
-	return negative
+	return negatives
 }
 
 // Degree returns the number of neighbors of u. It panics if u is out of range.
@@ -356,15 +358,13 @@ func (b *Builder) Build() *Graph {
 	weights := make([]float64, total)
 	keys := make([]uint64, maxDeg)
 	row := make([]float64, maxDeg)
-	negative := false
+	negatives := 0
 	for u := 0; u < n; u++ {
 		lo, hi := offsets[u], offsets[u+1]
 		ws := denseWeights(b.w[u], row[:len(b.adj[u])])
-		if copySorted(b.adj[u], ws, data[lo:hi], weights[lo:hi], keys) {
-			negative = true
-		}
+		negatives += copySorted(b.adj[u], ws, data[lo:hi], weights[lo:hi], keys)
 	}
-	return &Graph{offsets: offsets, data: data, weights: weights, negative: negative, m: b.m}
+	return &Graph{offsets: offsets, data: data, weights: weights, negatives: negatives, m: b.m}
 }
 
 // Graph is an immutable, undirected graph stored in Compressed Sparse Row form.
@@ -381,11 +381,11 @@ func (b *Builder) Build() *Graph {
 // spare capacity, so appending to one allocates rather than overwriting a
 // neighbor's data.
 type Graph struct {
-	offsets  []int32   // length n+1
-	data     []int32   // length 2*m; concatenated sorted neighbor lists
-	weights  []float64 // length 2*m, weights[i] belongs to data[i]; nil when unweighted
-	negative bool      // some weight is below zero
-	m        int
+	offsets   []int32   // length n+1
+	data      []int32   // length 2*m; concatenated sorted neighbor lists
+	weights   []float64 // length 2*m, weights[i] belongs to data[i]; nil when unweighted
+	negatives int       // entries of weights below zero, two per negative edge; a count so that a view can subtract those it hides
+	m         int
 }
 
 // NumNodes reports the number of nodes.
@@ -453,7 +453,7 @@ func (g *Graph) Weighted() bool { return g.weights != nil }
 // HasNegativeWeight reports whether any edge weighs less than zero. It is
 // always false on an unweighted graph. Build records the answer, so the call is
 // O(1); algorithms that need non-negative weights check it once up front.
-func (g *Graph) HasNegativeWeight() bool { return g.negative }
+func (g *Graph) HasNegativeWeight() bool { return g.negatives > 0 }
 
 // Weights returns the weights of u's edges, aligned index for index with
 // [Graph.Neighbors]: Weights(u)[i] is the weight of the edge to Neighbors(u)[i].

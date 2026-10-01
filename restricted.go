@@ -55,13 +55,19 @@ type Restricted struct {
 // restrictable is what RestrictedView needs from the graph under a view,
 // beyond Adjacency: whether each edge is one-way, which nodes have an edge
 // into a given node, so that hiding the node can take it out of their lists,
-// and the out-lists' storage. Graph and Digraph implement it.
+// the out-lists' storage, and how many out-list entries weigh less than zero,
+// so that the view's HasNegativeWeight follows from the entries it drops.
+// Graph and Digraph implement it.
 type restrictable interface {
 	Adjacency
 	directed() bool
 	inNeighbors(u int) []int32
 	outCSR() (offsets, nbrs []int32, ws []float64)
+	negativeEntries() int
 }
+
+func (g *Graph) negativeEntries() int   { return g.negatives }
+func (g *Digraph) negativeEntries() int { return g.negatives }
 
 func (*Graph) directed() bool                          { return false }
 func (g *Graph) inNeighbors(u int) []int32             { return g.Neighbors(u) }
@@ -100,9 +106,8 @@ func (g *Digraph) outCSR() ([]int32, []int32, []float64) {
 //
 // Building a view takes O(k log k + d) time, where k is the number of edges
 // hidden, counting those taken out with hidden nodes, and d is the combined
-// degree of the nodes whose lists change. When g has a negative weight,
-// deciding whether one survives adds a pass over all of g's edges. A view of a
-// view is built afresh from the union, so hiding edges one at a time through a
+// degree of the nodes whose lists change. A view of a view is built afresh
+// from the union, so hiding edges one at a time through a
 // chain of views costs O(k²) over k steps; pass them to one call instead.
 func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	var base restrictable
@@ -157,6 +162,9 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	cut = slices.Compact(cut)
 
 	weighted := base.Weighted()
+	// The negative entries among those the view drops; whatever g has beyond
+	// them is still visible.
+	droppedNegative := 0
 	r.offsets = []int32{0}
 	if weighted {
 		// Non-nil even if every changed list ends up empty, since a nil
@@ -181,6 +189,9 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 				drop = drop[1:]
 			}
 			if len(drop) > 0 && drop[0] == key(u, int(v)) {
+				if weighted && ws[i] < 0 {
+					droppedNegative++
+				}
 				continue
 			}
 			r.nbrs = append(r.nbrs, v)
@@ -216,6 +227,11 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 			if len(base.OutNeighbors(u)) > 0 {
 				touch(u) // with nothing appended, an empty list
 			}
+			for _, w := range base.OutWeights(u) {
+				if w < 0 {
+					droppedNegative++
+				}
+			}
 		} else {
 			keep(u, cut[:j])
 		}
@@ -240,14 +256,7 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 		}
 	}
 
-	if base.HasNegativeWeight() {
-		for u := range n {
-			if slices.ContainsFunc(r.OutWeights(u), func(w float64) bool { return w < 0 }) {
-				r.negative = true
-				break
-			}
-		}
-	}
+	r.negative = base.negativeEntries() > droppedNegative
 	return r
 }
 

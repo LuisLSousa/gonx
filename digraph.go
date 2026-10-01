@@ -201,7 +201,7 @@ func (b *DigraphBuilder) Build() *Digraph {
 	outOffsets[n] = off
 	outData := make([]int32, b.m)
 	var outWeights []float64
-	negative := false
+	negatives := 0
 	if b.w == nil {
 		for u := range n {
 			row := outData[outOffsets[u]:outOffsets[u+1]]
@@ -219,9 +219,7 @@ func (b *DigraphBuilder) Build() *Digraph {
 		for u := range n {
 			lo, hi := outOffsets[u], outOffsets[u+1]
 			ws := denseWeights(b.w[u], row[:len(b.out[u])])
-			if copySorted(b.out[u], ws, outData[lo:hi], outWeights[lo:hi], keys) {
-				negative = true
-			}
+			negatives += copySorted(b.out[u], ws, outData[lo:hi], outWeights[lo:hi], keys)
 		}
 	}
 
@@ -260,7 +258,7 @@ func (b *DigraphBuilder) Build() *Digraph {
 	return &Digraph{
 		outOffsets: outOffsets, outData: outData, outWeights: outWeights,
 		inOffsets: inOffsets, inData: inData, inWeights: inWeights,
-		negative: negative, m: b.m,
+		negatives: negatives, m: b.m,
 	}
 }
 
@@ -288,7 +286,7 @@ type Digraph struct {
 	inOffsets  []int32   // length n+1
 	inData     []int32   // length m; concatenated sorted in-neighbor lists
 	inWeights  []float64 // length m, aligned with inData; nil when unweighted
-	negative   bool      // some weight is below zero
+	negatives  int       // entries of outWeights below zero; see Graph.negatives
 	m          int
 }
 
@@ -396,7 +394,7 @@ func (g *Digraph) Weighted() bool { return g.outWeights != nil }
 // HasNegativeWeight reports whether any edge weighs less than zero. It is
 // always false on an unweighted graph. Build records the answer, so the call is
 // O(1); algorithms that need non-negative weights check it once up front.
-func (g *Digraph) HasNegativeWeight() bool { return g.negative }
+func (g *Digraph) HasNegativeWeight() bool { return g.negatives > 0 }
 
 // OutWeights returns the weights of u's outgoing edges, aligned index for index
 // with [Digraph.OutNeighbors]. The slice is zero-copy and MUST NOT be modified.

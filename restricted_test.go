@@ -431,3 +431,28 @@ func FuzzRestrictedView(f *testing.F) {
 		checkView(t, g, RestrictedView(g, nodes, edges), nodes, edges)
 	})
 }
+
+// BenchmarkRestrictedViewNegative builds a view that hides one edge of a
+// 100k-node path, with and without a negative weight between its last nodes,
+// so that a cost which grows with the whole graph rather than with the lists
+// the view changes, such as a scan for a surviving negative weight, shows up
+// as a gap between the two.
+func BenchmarkRestrictedViewNegative(b *testing.B) {
+	for _, negative := range []bool{false, true} {
+		const n = 100_000
+		g := NewWeightedBuilder(n)
+		for u := range n - 1 {
+			g.AddEdgeW(u, u+1, 1)
+		}
+		if negative {
+			g.AddEdgeW(n-3, n-1, -1)
+		}
+		graph := g.Build()
+		b.Run(map[bool]string{false: "nonnegative", true: "negative"}[negative], func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = RestrictedView(graph, nil, [][2]int{{10, 11}})
+			}
+		})
+	}
+}
