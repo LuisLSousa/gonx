@@ -29,6 +29,26 @@ func BenchmarkDoubleEdgeSwap_1500(b *testing.B) {
 	}
 }
 
+// BenchmarkRelabelStar_20000 relabels a weighted star, whose hub edges are
+// all re-added from the hub's end: the case where a duplicate check that scans
+// only the first endpoint's list goes quadratic in the hub's degree.
+func BenchmarkRelabelStar_20000(b *testing.B) {
+	const n = 20_000
+	sb := gonx.NewWeightedBuilder(n)
+	for v := 1; v < n; v++ {
+		sb.AddEdgeW(0, v, float64(v))
+	}
+	g := sb.Build()
+	perm := make([]int, n)
+	for i := range perm {
+		perm[i] = i
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = transform.RelabelNodes(g, perm)
+	}
+}
+
 // BenchmarkNeighborIteration measures the simulation's hot path; it should be
 // allocation-free (run with -benchmem).
 func BenchmarkNeighborIteration(b *testing.B) {

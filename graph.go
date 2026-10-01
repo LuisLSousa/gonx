@@ -123,14 +123,22 @@ func (b *Builder) AddNode() int {
 	return len(b.adj) - 1
 }
 
-// HasEdge reports whether the undirected edge {u, v} exists. O(deg(u)).
+// HasEdge reports whether the undirected edge {u, v} exists. O(min(deg(u),
+// deg(v))).
 func (b *Builder) HasEdge(u, v int) bool {
 	if u < 0 || u >= len(b.adj) || v < 0 || v >= len(b.adj) {
 		return false
 	}
-	vv := int32(v)
-	for _, w := range b.adj[u] {
-		if w == vv {
+	// The edge is in both endpoints' lists, so the shorter one decides. With
+	// only u's list, adding a hub's edges from the hub's end, as relabeling a
+	// star does, would rescan the growing hub list each time: quadratic in
+	// its degree.
+	list, x := b.adj[u], int32(v)
+	if len(b.adj[v]) < len(list) {
+		list, x = b.adj[v], int32(u)
+	}
+	for _, w := range list {
+		if w == x {
 			return true
 		}
 	}
