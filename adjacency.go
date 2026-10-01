@@ -25,10 +25,15 @@ package gonx
 //     spare capacity, and valid for as long as the graph is. They may be held
 //     across calls, and the graph may be read from several goroutines at once.
 //
-// Adjacency is sealed: only this package's types, and types embedding them,
-// implement it, so the method set can grow with the algorithms that consume it.
-// A later release may open it to other representations once that set has
-// settled.
+// Adjacency is sealed: only this package's types implement it, so the method
+// set can grow with the algorithms that consume it. A later release may open it
+// to other representations once that set has settled. A type that embeds one
+// of them, or embeds an Adjacency, satisfies the interface too, and takes on
+// the contract for every method it overrides; an override of OutWeights, for
+// one, must keep HasNegativeWeight truthful, since Dijkstra relies on it to
+// reject negative weights up front. Functions that need a graph's storage
+// rather than its methods, such as [RestrictedView], read through such a
+// wrapper to the graph it holds.
 type Adjacency interface {
 	NumNodes() int
 	OutNeighbors(u int) []int32
@@ -36,12 +41,15 @@ type Adjacency interface {
 	Weighted() bool
 	HasNegativeWeight() bool
 
-	adjacency() // seals the interface to this package
+	// adjacency seals the interface and returns the Graph, Digraph or
+	// Restricted that implements it. Through a wrapper, which inherits the
+	// method from what it embeds, that is the value wrapped.
+	adjacency() Adjacency
 }
 
-func (*Graph) adjacency()      {}
-func (*Digraph) adjacency()    {}
-func (*Restricted) adjacency() {}
+func (g *Graph) adjacency() Adjacency      { return g }
+func (g *Digraph) adjacency() Adjacency    { return g }
+func (r *Restricted) adjacency() Adjacency { return r }
 
 var (
 	_ Adjacency = (*Graph)(nil)

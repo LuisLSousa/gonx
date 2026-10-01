@@ -317,6 +317,37 @@ func TestRestrictedViewOfEmbeddedGraph(t *testing.T) {
 	checkView(t, g, got, nil, edges)
 }
 
+// decorator embeds the interface rather than a concrete type, so it inherits
+// none of the unexported methods a view reads storage through; a view of it
+// must still find the graph or view inside.
+type decorator struct{ Adjacency }
+
+func TestRestrictedViewOfInterfaceWrapper(t *testing.T) {
+	b := NewBuilder(4)
+	b.AddEdgeW(0, 1, -1)
+	b.AddEdgeW(1, 2, 2)
+	b.AddEdgeW(2, 3, 3)
+	g := b.Build()
+	edges := [][2]int{{2, 1}}
+	for name, w := range map[string]Adjacency{
+		"graph":                decorator{g},
+		"embedding type":       decorator{lying{g}},
+		"wrapper of a wrapper": decorator{decorator{g}},
+	} {
+		got := RestrictedView(w, nil, edges)
+		if got.g != g {
+			t.Fatalf("%s: the view is not of the wrapped graph", name)
+		}
+		checkView(t, g, got, nil, edges)
+	}
+	// A wrapped view gives the union over the same graph, as a view does.
+	got := RestrictedView(decorator{RestrictedView(g, []int{3}, nil)}, nil, edges)
+	if got.g != g {
+		t.Fatal("wrapped view: the result is not over the original graph")
+	}
+	checkView(t, g, got, []int{3}, edges)
+}
+
 func TestRestrictedViewPanics(t *testing.T) {
 	g := NewBuilder(3).Build()
 	for name, f := range map[string]func(){

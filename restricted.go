@@ -55,20 +55,14 @@ type Restricted struct {
 // restrictable is what RestrictedView needs from the graph under a view,
 // beyond Adjacency: whether each edge is one-way, which nodes have an edge
 // into a given node, so that hiding the node can take it out of their lists,
-// and the out-lists' storage. Graph and Digraph implement it. A type that
-// embeds one gets these methods too, and graph returns the embedded value, so
-// that the view reads one graph throughout rather than the embedding type's
-// overrides for some nodes and the storage beneath them for others.
+// and the out-lists' storage. Graph and Digraph implement it.
 type restrictable interface {
 	Adjacency
 	directed() bool
 	inNeighbors(u int) []int32
 	outCSR() (offsets, nbrs []int32, ws []float64)
-	graph() restrictable
 }
 
-func (g *Graph) graph() restrictable                   { return g }
-func (g *Digraph) graph() restrictable                 { return g }
 func (*Graph) directed() bool                          { return false }
 func (g *Graph) inNeighbors(u int) []int32             { return g.Neighbors(u) }
 func (g *Graph) outCSR() ([]int32, []int32, []float64) { return g.offsets, g.data, g.weights }
@@ -77,9 +71,6 @@ func (g *Digraph) inNeighbors(u int) []int32           { return g.InNeighbors(u)
 func (g *Digraph) outCSR() ([]int32, []int32, []float64) {
 	return g.outOffsets, g.outData, g.outWeights
 }
-
-// restriction finds the view in an Adjacency that is one, or embeds one.
-func (r *Restricted) restriction() *Restricted { return r }
 
 // RestrictedView returns a view of g with the given nodes and edges hidden,
 // after networkx's restricted_view. Neither g nor the arguments are modified,
@@ -101,9 +92,11 @@ func (r *Restricted) restriction() *Restricted { return r }
 // negative edge makes the view usable for Dijkstra.
 //
 // When g is itself a Restricted view, the result hides the union of both sets
-// over the same underlying graph. When g is a type that embeds a Graph or a
-// Digraph, the view is of the embedded graph, and methods the embedding type
-// overrides are not consulted.
+// over the same underlying graph. When g is a wrapper, a type that embeds a
+// Graph, a Digraph, a view or an Adjacency holding one of them, the view is of
+// the graph or view it wraps, and methods the wrapper overrides are not
+// consulted: the view reads one graph throughout, rather than the wrapper's
+// answers for some nodes and the storage beneath them for others.
 //
 // Building a view takes O(k log k + d) time, where k is the number of edges
 // hidden, counting those taken out with hidden nodes, and d is the combined
@@ -113,17 +106,16 @@ func (r *Restricted) restriction() *Restricted { return r }
 // chain of views costs O(k²) over k steps; pass them to one call instead.
 func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	var base restrictable
-	switch b := g.(type) {
-	case interface{ restriction() *Restricted }:
-		r := b.restriction()
-		base = r.g
-		nodes = append(slices.Clip(r.hiddenNodes), nodes...)
-		edges = append(slices.Clip(r.hiddenEdges), edges...)
+	switch b := g.adjacency().(type) {
+	case *Restricted:
+		base = b.g
+		nodes = append(slices.Clip(b.hiddenNodes), nodes...)
+		edges = append(slices.Clip(b.hiddenEdges), edges...)
 	case restrictable:
-		base = b.graph()
+		base = b
 	default:
-		// Unreachable while Adjacency is sealed: every implementation is one
-		// of the three types above or embeds one.
+		// Unreachable: adjacency is defined on the three types above alone,
+		// and returns its receiver.
 		panic(fmt.Sprintf("gonx: RestrictedView: unsupported Adjacency %T", g))
 	}
 	n := base.NumNodes()
