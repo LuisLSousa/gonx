@@ -145,17 +145,21 @@ def bench_igraph(us, vs, n, repeats):
         emit("igraph", "pagerank", n, edges, i, time.perf_counter() - start)
     top = max(range(n), key=lambda v: rank[v])
 
-    # Each repeat gets a graph of its own, built outside the timing: igraph
-    # caches whether a graph is connected, so a second call on the same object
+    # Each repeat runs on a copy of G made outside the timing: igraph caches
+    # whether a graph is connected, so a second call on the same object
     # answers from the cache in a tenth of the time instead of computing the
-    # components. At most two graphs are alive at once, as in the build loop.
-    comps = None
+    # components. Copies carry the cache too, which is why G itself is never
+    # asked. Copying is cheaper in memory than rebuilding from edge_list, and
+    # the result, which holds a reference to its graph, goes with the copy, so
+    # the process peaks no higher than without the copies.
+    ncomps = 0
     for i in range(repeats):
-        H = ig.Graph(n=n, edges=edge_list, directed=True)
+        H = G.copy()
         start = time.perf_counter()
         comps = H.connected_components(mode="weak")
         emit("igraph", "wcc", n, edges, i, time.perf_counter() - start)
-        del H
+        ncomps = len(comps)
+        del comps, H
 
     src = max(range(n), key=lambda u: G.degree(u, mode="out"))
     reached = 0
@@ -166,7 +170,7 @@ def bench_igraph(us, vs, n, repeats):
 
     print(
         f"#check,igraph,n={n},edges={edges},pr_top={top},"
-        f"pr_top_score={rank[top]:.9f},wcc={len(comps)},bfs_src={src},bfs_reached={reached}",
+        f"pr_top_score={rank[top]:.9f},wcc={ncomps},bfs_src={src},bfs_reached={reached}",
         flush=True,
     )
 

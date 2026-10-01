@@ -45,10 +45,11 @@ process per library (`-op dijkstra`); its peak RSS is recorded as
   (`nx.pagerank` is scipy-backed and refuses to run without it).
 - **igraph** PageRank uses PRPACK, a direct solver with no tolerance
   parameter; it is a different algorithm class and is reported as such.
-  Its weak components run on a fresh graph each repeat, built outside the
-  timing: igraph caches whether a graph is connected, and repeats on one
-  graph object answered from that cache in about a tenth of the time,
-  which earlier receipts reported as igraph's speed.
+  Its weak components run on a fresh copy of the graph each repeat, made
+  outside the timing: igraph caches whether a graph is connected, and
+  repeats on one graph object answered from that cache in about a tenth of
+  the time, which earlier receipts reported as igraph's speed. The copies
+  leave its peak memory unchanged.
 - **gonum** uses `network.PageRankSparse`; the dense `network.PageRank`
   builds an n x n matrix and cannot fit n = 1M in memory. WCC uses the
   `graph.Undirect` adapter over `topo.ConnectedComponents`.
