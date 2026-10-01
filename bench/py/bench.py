@@ -145,11 +145,17 @@ def bench_igraph(us, vs, n, repeats):
         emit("igraph", "pagerank", n, edges, i, time.perf_counter() - start)
     top = max(range(n), key=lambda v: rank[v])
 
+    # Each repeat gets a graph of its own, built outside the timing: igraph
+    # caches whether a graph is connected, so a second call on the same object
+    # answers from the cache in a tenth of the time instead of computing the
+    # components. At most two graphs are alive at once, as in the build loop.
     comps = None
     for i in range(repeats):
+        H = ig.Graph(n=n, edges=edge_list, directed=True)
         start = time.perf_counter()
-        comps = G.connected_components(mode="weak")
+        comps = H.connected_components(mode="weak")
         emit("igraph", "wcc", n, edges, i, time.perf_counter() - start)
+        del H
 
     src = max(range(n), key=lambda u: G.degree(u, mode="out"))
     reached = 0

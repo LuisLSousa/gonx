@@ -5,10 +5,19 @@
 #
 # Outputs:
 #   results/results.csv   lib,op,n,edges,repeat,seconds (+ mem rows in bytes)
-#   results/checks.txt    per-library #check lines for cross-validation
+#   results/checks.txt    per-library #check lines, compared at the end
 #   results/env.txt       hardware, OS, toolchain, library versions
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# The commit the numbers come from, read before the run rewrites results/.
+# Any other change in the tree marks it dirty, since the commit alone would
+# then not reproduce them.
+GONX_REV=$(git rev-parse --short HEAD)
+if [ -n "$(git status --porcelain -- .. ':!results')" ]; then
+  GONX_REV="$GONX_REV-dirty"
+  echo "warning: uncommitted changes; env.txt will record $GONX_REV" >&2
+fi
 
 SIZES="${SIZES:-10000 100000 1000000}"
 M=5
@@ -69,7 +78,7 @@ done
   echo "host: $(sysctl -n machdep.cpu.brand_string), $(sysctl -n hw.ncpu) cores, $(($(sysctl -n hw.memsize) / 1073741824)) GB"
   echo "os: $(sw_vers -productName) $(sw_vers -productVersion)"
   echo "go: $(go version)"
-  echo "gonx: $(cd .. && git rev-parse --short HEAD) (module: replace ../)"
+  echo "gonx: $GONX_REV (module: replace ../)"
   echo "python: $($PY --version 2>&1)"
   "$PY" -m pip freeze | grep -Ei "networkx|igraph|scipy|numpy"
   echo "protocol: BA(n, m=$M, seed=$SEED) low->high oriented; repeats=$REPEATS;"
@@ -79,4 +88,5 @@ done
   echo "  timings exclude file parsing; peak RSS per whole process via /usr/bin/time -l"
 } > results/env.txt
 
+"$PY" py/compare_checks.py results/checks.txt
 echo "done -> results/"

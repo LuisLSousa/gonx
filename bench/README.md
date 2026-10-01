@@ -6,13 +6,17 @@ from this harness; run it yourself:
 
 ```sh
 cd bench
-python3 -m venv .venv && .venv/bin/pip install networkx python-igraph scipy
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run.sh                      # full suite: n = 10k / 100k / 1M, 3 repeats
 SIZES="10000" REPEATS=1 ./run.sh   # quick smoke run
 ```
 
 Results land in `results/`: raw timings (`results.csv`), cross-library
 answer checks (`checks.txt`), and the exact environment (`env.txt`).
+The run fails if the libraries' answers in `checks.txt` disagree
+(`py/compare_checks.py`), and `env.txt` marks the gonx commit `-dirty`
+when the tree had uncommitted changes. `requirements.txt` pins the Python
+packages to the versions the committed results used.
 
 ## What is measured
 
@@ -41,6 +45,10 @@ process per library (`-op dijkstra`); its peak RSS is recorded as
   (`nx.pagerank` is scipy-backed and refuses to run without it).
 - **igraph** PageRank uses PRPACK, a direct solver with no tolerance
   parameter; it is a different algorithm class and is reported as such.
+  Its weak components run on a fresh graph each repeat, built outside the
+  timing: igraph caches whether a graph is connected, and repeats on one
+  graph object answered from that cache in about a tenth of the time,
+  which earlier receipts reported as igraph's speed.
 - **gonum** uses `network.PageRankSparse`; the dense `network.PageRank`
   builds an n x n matrix and cannot fit n = 1M in memory. WCC uses the
   `graph.Undirect` adapter over `topo.ConnectedComponents`.
