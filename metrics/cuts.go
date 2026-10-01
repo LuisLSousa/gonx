@@ -25,7 +25,8 @@ type Bridge struct {
 // number of servers, and every bridge then reports the total weight it cuts
 // off in SideWeight. It must have length g.NumNodes(). Computing the sums here
 // costs one addition per node, while computing them afterwards would take a
-// traversal per bridge.
+// traversal per bridge. They are plain float64 sums, so a NaN weight makes
+// every SideWeight that includes it NaN, as do infinities of both signs.
 //
 // The result matches networkx.bridges up to the orientation of each pair,
 // which networkx does not specify. It runs in O(n + m) time on an iterative
@@ -37,12 +38,28 @@ func Bridges(g *gonx.Graph, nodeWeight []float64) []Bridge {
 		panic(fmt.Sprintf("gonx/metrics: Bridges: nodeWeight has length %d, want %d", len(nodeWeight), n))
 	}
 	t := lowLink(g, nodeWeight)
-	var out []Bridge
-	for v := range n {
+	isBridge := func(v int) bool {
 		p := t.parent[v]
-		if p < 0 || t.low[v] <= t.disc[p] {
+		return p >= 0 && t.low[v] > t.disc[p]
+	}
+	// Counting first sizes the result exactly. Most edges of a tree-like graph
+	// are bridges, and growing the slice by append would allocate several
+	// times its final size on the way.
+	k := 0
+	for v := range n {
+		if isBridge(v) {
+			k++
+		}
+	}
+	if k == 0 {
+		return nil
+	}
+	out := make([]Bridge, 0, k)
+	for v := range n {
+		if !isBridge(v) {
 			continue
 		}
+		p := t.parent[v]
 		b := Bridge{U: int(p), V: v, Side: int(t.size[v]), SideWeight: float64(t.size[v])}
 		if t.weight != nil {
 			b.SideWeight = t.weight[v]
@@ -76,7 +93,16 @@ func ArticulationPoints(g *gonx.Graph) []int {
 			cut[p] = 2
 		}
 	}
-	var out []int
+	k := 0
+	for _, c := range cut {
+		if c == 2 {
+			k++
+		}
+	}
+	if k == 0 {
+		return nil
+	}
+	out := make([]int, 0, k) // sized exactly, as in Bridges
 	for u, c := range cut {
 		if c == 2 {
 			out = append(out, u)
