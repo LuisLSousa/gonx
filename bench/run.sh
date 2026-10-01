@@ -3,15 +3,16 @@
 # Barabasi-Albert edge lists, each (library, size) pair in its own
 # process under /usr/bin/time -l so peak RSS is captured per run.
 #
-# Outputs:
+# Outputs, written to a scratch directory and moved into results/ only once
+# the libraries' answers agree, so a failed run leaves the committed results
+# as they were:
 #   results/results.csv   lib,op,n,edges,repeat,seconds (+ mem rows in bytes)
 #   results/checks.txt    per-library #check lines, compared at the end
 #   results/env.txt       hardware, OS, toolchain, library versions
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# The commit the numbers come from, read before the run rewrites results/.
-# Any other change in the tree marks it dirty, since the commit alone would
+# The commit the numbers come from. Any other change in the tree marks it dirty, since the commit alone would
 # then not reproduce them.
 GONX_REV=$(git rev-parse --short HEAD)
 if [ -n "$(git status --porcelain -- .. ':!results')" ]; then
@@ -25,8 +26,9 @@ SEED=42
 REPEATS="${REPEATS:-3}"
 
 mkdir -p data results
-: > results/results.csv
-: > results/checks.txt
+OUT=$(mktemp -d)
+: > "$OUT/results.csv"
+: > "$OUT/checks.txt"
 
 echo "== building runners =="
 go build -o bin/gen ./cmd/gen
@@ -41,11 +43,11 @@ run_one() { # lib n memop cmd...
   local tmpout tmptime
   tmpout=$(mktemp) tmptime=$(mktemp)
   /usr/bin/time -l "$@" > "$tmpout" 2> "$tmptime"
-  grep -v '^#' "$tmpout" >> results/results.csv
-  grep '^#check' "$tmpout" >> results/checks.txt || true
+  grep -v '^#' "$tmpout" >> "$OUT/results.csv"
+  grep '^#check' "$tmpout" >> "$OUT/checks.txt" || true
   local rss
   rss=$(grep "maximum resident set size" "$tmptime" | awk '{print $1}')
-  echo "$lib,$memop,$n,0,0,$rss" >> results/results.csv
+  echo "$lib,$memop,$n,0,0,$rss" >> "$OUT/results.csv"
   rm -f "$tmpout" "$tmptime"
 }
 
@@ -86,7 +88,12 @@ done
   echo "  gonum tol=1e-6 (absolute L1); igraph=PRPACK direct solver (no tol);"
   echo "  dijkstra: weight(u,v) = 1 + ((u*7919 + v*104729) mod 1000)/1000, source = highest out-degree node;"
   echo "  timings exclude file parsing; peak RSS per whole process via /usr/bin/time -l"
-} > results/env.txt
+} > "$OUT/env.txt"
 
-"$PY" py/compare_checks.py results/checks.txt
+if ! "$PY" py/compare_checks.py "$OUT/checks.txt"; then
+  echo "results/ left unchanged; this run's output is in $OUT" >&2
+  exit 1
+fi
+mv "$OUT/results.csv" "$OUT/checks.txt" "$OUT/env.txt" results/
+rmdir "$OUT"
 echo "done -> results/"

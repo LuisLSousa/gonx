@@ -14,8 +14,10 @@ SIZES="10000" REPEATS=1 ./run.sh   # quick smoke run
 Results land in `results/`: raw timings (`results.csv`), cross-library
 answer checks (`checks.txt`), and the exact environment (`env.txt`).
 The run fails if the libraries' answers in `checks.txt` disagree
-(`py/compare_checks.py`), and `env.txt` marks the gonx commit `-dirty`
-when the tree had uncommitted changes. `requirements.txt` pins the Python
+(`py/compare_checks.py`, exact on counts and node IDs, within the last
+printed digit on float sums), and then leaves `results/` as it was; a
+successful run replaces all three files together. `env.txt` marks the
+gonx commit `-dirty` when the tree had uncommitted changes. `requirements.txt` pins the Python
 packages to the versions the committed results used.
 
 ## What is measured

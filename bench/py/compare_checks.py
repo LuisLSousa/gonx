@@ -5,16 +5,35 @@ instead of publishing timings for different work.
 
 Lines are grouped by graph size and by run (the core run reports PageRank,
 components and BFS; the Dijkstra run reports shortest paths), and within a
-group every field must be equal across libraries. The one exception is
-pr_top_score: the libraries stop PageRank on different criteria (see
-env.txt), so it must agree to a relative 1e-3 rather than exactly.
+group every field must agree across libraries: exactly for counts and node
+IDs, and within a tolerance for the floats, where libraries that compute the
+same answer differently can still differ in the last digit printed.
+
+- pr_top_score, the top PageRank score, agrees to a relative 1e-3: the
+  libraries stop iterating on different criteria (see env.txt).
+- sp_sum, the sum of about n shortest-path distances printed to 3
+  decimals, and sp_max, printed to 6, agree to one unit in the last place
+  printed (or a relative 1e-9 on large sums): summing in a different order
+  moves the rounding.
+- pr_top, the top-ranked node, may differ when the top scores agree: two
+  hubs whose scores are that close can swap between runs of a library that
+  starts PageRank from a random vector, as gonum does.
 """
 
 import sys
 from collections import defaultdict
 
 LIBS = {"gonx", "gonum", "networkx", "igraph"}
-LOOSE = {"pr_top_score": 1e-3}
+# field -> (relative, absolute) tolerance; a value passes within either.
+# The absolute ones are a unit and a half in the last place printed, since a
+# difference of exactly one unit can come out a hair above it in floats.
+LOOSE = {"pr_top_score": (1e-3, 0), "sp_sum": (1e-9, 1.5e-3), "sp_max": (1e-9, 1.5e-6)}
+
+
+def close(key, got, want):
+    rel, abs_ = LOOSE[key]
+    a, b = float(got), float(want)
+    return abs(a - b) <= max(rel * max(abs(a), abs(b)), abs_)
 
 
 def main(path):
@@ -42,10 +61,15 @@ def main(path):
             for key, want in ref.items():
                 got = fields[key]
                 if key in LOOSE:
-                    a, b = float(got), float(want)
-                    if abs(a - b) > LOOSE[key] * max(abs(a), abs(b)):
-                        problems.append(f"n={n} {run}: {lib} {key}={got}, gonx {want}")
-                elif got != want:
+                    ok = close(key, got, want)
+                elif key == "pr_top" and got != want:
+                    ok = close("pr_top_score", fields["pr_top_score"], ref["pr_top_score"])
+                    if ok:
+                        print(f"note: n={n} {lib} ranks node {got} first, gonx node {want}, "
+                              f"with top scores {fields['pr_top_score']} and {ref['pr_top_score']}")
+                else:
+                    ok = got == want
+                if not ok:
                     problems.append(f"n={n} {run}: {lib} {key}={got}, gonx {want}")
 
     if not groups:
