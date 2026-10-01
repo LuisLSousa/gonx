@@ -263,17 +263,42 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	return r
 }
 
-// underlying returns the Graph, Digraph or Restricted that g is or wraps. A
-// nil g, or a wrapper whose embedded Adjacency is nil, would otherwise fail
-// with a bare nil dereference in the promoted method call; this names the
-// function and the type instead.
+// underlying returns the Graph, Digraph or Restricted that g is or wraps. When
+// there is none, because g is nil, a nil pointer, or a wrapper around either,
+// it panics with a message naming RestrictedView and the types involved;
+// otherwise the first method call on the missing graph would fail with a bare
+// nil dereference.
 func underlying(g Adjacency) Adjacency {
 	if g == nil {
 		panic("gonx: RestrictedView: nil Adjacency")
 	}
+	a := adjacencyOf(g)
+	missing := false
+	switch b := a.(type) {
+	case *Graph:
+		missing = b == nil
+	case *Digraph:
+		missing = b == nil
+	case *Restricted:
+		missing = b == nil
+	}
+	if missing {
+		if fmt.Sprintf("%T", g) == fmt.Sprintf("%T", a) {
+			panic(fmt.Sprintf("gonx: RestrictedView: nil %T", g))
+		}
+		panic(fmt.Sprintf("gonx: RestrictedView: %T wraps a nil %T", g, a))
+	}
+	return a
+}
+
+// adjacencyOf calls g.adjacency. On a wrapper whose embedded Adjacency is nil
+// that call panics inside the promoted method, before there is a value to
+// check, so the panic is replaced with one that names the wrapper; the
+// original stays in the trace, marked recovered.
+func adjacencyOf(g Adjacency) Adjacency {
 	defer func() {
 		if recover() != nil {
-			panic(fmt.Sprintf("gonx: RestrictedView: %T wraps no graph", g))
+			panic(fmt.Sprintf("gonx: RestrictedView: %T wraps a nil Adjacency", g))
 		}
 	}()
 	return g.adjacency()
