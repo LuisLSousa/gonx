@@ -8,8 +8,9 @@ import (
 	"github.com/LuisLSousa/gonx"
 )
 
-// ErrNegativeWeight is returned by Dijkstra and ShortestPath when the graph has
-// an edge with a negative weight, wherever it is. Dijkstra's algorithm is only
+// ErrNegativeWeight is returned by Dijkstra, ShortestPath and
+// [PathFinder.ShortestPath] when the graph has an edge with a negative weight,
+// wherever it is. Dijkstra's algorithm is only
 // correct for non-negative weights, and a negative one is almost always a data
 // error rather than an intended shortest-path problem, so the call fails
 // instead of returning distances that are silently wrong. The check reads

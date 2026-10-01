@@ -20,8 +20,15 @@ import (
 // PathFinder is dropped.
 //
 // A PathFinder is not safe for concurrent use; give each goroutine its own.
-// The graphs it reads may be shared.
+// The graphs it reads may be shared. Copying a PathFinder is safe, but the
+// copy does not inherit the scratch: it allocates its own on its first query,
+// so a warmed-up PathFinder copied once per goroutine warms up again in each.
 type PathFinder struct {
+	// self is the PathFinder's address as of its last query. A copy carries
+	// the original's, which is how prepare recognizes one: a copy shares the
+	// original's arrays but has its own touched list, so each would reset
+	// only its own part of what the other dirtied.
+	self *PathFinder
 	dist []float64
 	prev []int32
 	heap nodeHeap
@@ -32,17 +39,18 @@ type PathFinder struct {
 }
 
 // ShortestPath is [ShortestPath] on the PathFinder's scratch: the same path
-// and length, the same ErrNegativeWeight rule, and the same panics. The path
+// and length, the same ErrNegativeWeight rule, and panics in the same cases,
+// checked in the same order. The path
 // is newly allocated and stays valid after later queries. Apart from that
 // path, a query allocates nothing once the PathFinder has searched a graph at
 // least this large.
 func (p *PathFinder) ShortestPath(g gonx.Adjacency, src, dst int) (path []int, length float64, err error) {
 	n := g.NumNodes()
-	if src < 0 || src >= n {
-		panic(fmt.Sprintf("gonx/metrics: PathFinder.ShortestPath: source %d out of range [0, %d)", src, n))
-	}
 	if dst < 0 || dst >= n {
 		panic(fmt.Sprintf("gonx/metrics: PathFinder.ShortestPath: target %d out of range [0, %d)", dst, n))
+	}
+	if src < 0 || src >= n {
+		panic(fmt.Sprintf("gonx/metrics: PathFinder.ShortestPath: source %d out of range [0, %d)", src, n))
 	}
 	if g.HasNegativeWeight() {
 		return nil, 0, ErrNegativeWeight
@@ -92,8 +100,12 @@ func (p *PathFinder) search(g gonx.Adjacency, src, target int) {
 
 // prepare undoes the last query and sizes the scratch to n nodes. Every entry
 // up to the capacity is kept in its initial state between queries, so
-// shrinking and regrowing within it needs no initialization either.
+// shrinking and regrowing within it needs no initialization either. On the
+// zero value, or on a copy, it first drops whatever scratch is there.
 func (p *PathFinder) prepare(n int) {
+	if p.self != p {
+		*p = PathFinder{self: p}
+	}
 	for _, v := range p.touched {
 		p.dist[v] = math.Inf(1)
 		p.prev[v] = -1
