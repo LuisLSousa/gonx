@@ -168,8 +168,11 @@ type nodeHeap struct {
 	pos   []int32   // pos[v] is v's index in nodes, or -1 when v is not in the heap
 }
 
-func newNodeHeap(n int, key []float64) *nodeHeap {
-	h := &nodeHeap{key: key, nodes: make([]int32, 0, n), pos: make([]int32, n)}
+// newNodeHeap returns the heap by value, so that the struct itself lives in
+// its caller's frame whether or not the call is inlined, and the two arrays
+// are the only allocations.
+func newNodeHeap(n int, key []float64) nodeHeap {
+	h := nodeHeap{key: key, nodes: make([]int32, 0, n), pos: make([]int32, n)}
 	for i := range h.pos {
 		h.pos[i] = -1
 	}

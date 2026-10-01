@@ -145,7 +145,7 @@ func (p *PathFinder) prepare(n int) *pathScratch {
 		s.dist[i] = math.Inf(1)
 		s.prev[i] = -1
 	}
-	s.heap = *newNodeHeap(n, s.dist)
+	s.heap = newNodeHeap(n, s.dist)
 	// A query records each node it reaches once, so n entries always suffice
 	// and the list never grows mid-query.
 	s.touched = make([]int32, 0, n)
