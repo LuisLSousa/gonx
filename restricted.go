@@ -2,6 +2,7 @@ package gonx
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 )
 
@@ -264,13 +265,20 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 }
 
 // underlying returns the Graph, Digraph or Restricted that g is or wraps. When
-// there is none, because g is nil, a nil pointer, or a wrapper around either,
+// there is none, because g is nil, a nil pointer, or a wrapper holding either,
 // it panics with a message naming RestrictedView and the types involved;
 // otherwise the first method call on the missing graph would fail with a bare
 // nil dereference.
 func underlying(g Adjacency) Adjacency {
 	if g == nil {
 		panic("gonx: RestrictedView: nil Adjacency")
+	}
+	// A nil pointer, to a graph, a view or a wrapper, is caught before any
+	// method runs on it. That names it exactly, and avoids a fault inside a
+	// promoted method, which Go 1.27's race detector turns from a panic into
+	// a fatal error when it unwinds through a deferred call.
+	if v := reflect.ValueOf(g); v.Kind() == reflect.Pointer && v.IsNil() {
+		panic(fmt.Sprintf("gonx: RestrictedView: nil %T", g))
 	}
 	a := adjacencyOf(g)
 	missing := false
@@ -283,22 +291,19 @@ func underlying(g Adjacency) Adjacency {
 		missing = b == nil
 	}
 	if missing {
-		if fmt.Sprintf("%T", g) == fmt.Sprintf("%T", a) {
-			panic(fmt.Sprintf("gonx: RestrictedView: nil %T", g))
-		}
 		panic(fmt.Sprintf("gonx: RestrictedView: %T wraps a nil %T", g, a))
 	}
 	return a
 }
 
-// adjacencyOf calls g.adjacency. On a wrapper whose embedded Adjacency is nil
-// that call panics inside the promoted method, before there is a value to
-// check, so the panic is replaced with one that names the wrapper; the
-// original stays in the trace, marked recovered.
+// adjacencyOf calls g.adjacency. On a wrapper holding a nil Adjacency, or a
+// nil pointer to another wrapper, that call panics inside the promoted method,
+// before there is a value to check, so the panic is replaced with one that
+// names the wrapper; the original stays in the trace, marked recovered.
 func adjacencyOf(g Adjacency) Adjacency {
 	defer func() {
 		if recover() != nil {
-			panic(fmt.Sprintf("gonx: RestrictedView: %T wraps a nil Adjacency", g))
+			panic(fmt.Sprintf("gonx: RestrictedView: %T wraps a nil Adjacency or a nil pointer", g))
 		}
 	}()
 	return g.adjacency()

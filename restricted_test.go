@@ -349,17 +349,26 @@ func TestRestrictedViewOfInterfaceWrapper(t *testing.T) {
 	checkView(t, g, got, []int{3}, edges)
 }
 
+// byValue embeds a Graph by value, so only a pointer to it is an Adjacency,
+// and a nil one fails inside the promoted method.
+type byValue struct{ Graph }
+
 // TestRestrictedViewNilPanics pins that a missing graph, whether a nil
-// interface, a nil pointer or a wrapper around either, panics with a message
-// naming RestrictedView and the types, rather than with a nil dereference.
+// interface, a nil pointer, to a graph or to a wrapper, or a wrapper around
+// any of those, panics with a message naming RestrictedView and the types,
+// rather than with a nil dereference.
 func TestRestrictedViewNilPanics(t *testing.T) {
 	for _, c := range []struct {
 		g    Adjacency
 		want string
 	}{
 		{nil, "gonx: RestrictedView: nil Adjacency"},
-		{decorator{}, "gonx: RestrictedView: gonx.decorator wraps a nil Adjacency"},
-		{decorator{decorator{}}, "gonx: RestrictedView: gonx.decorator wraps a nil Adjacency"},
+		{decorator{}, "gonx: RestrictedView: gonx.decorator wraps a nil Adjacency or a nil pointer"},
+		{&decorator{}, "gonx: RestrictedView: *gonx.decorator wraps a nil Adjacency or a nil pointer"},
+		{decorator{decorator{}}, "gonx: RestrictedView: gonx.decorator wraps a nil Adjacency or a nil pointer"},
+		{(*decorator)(nil), "gonx: RestrictedView: nil *gonx.decorator"},
+		{(*byValue)(nil), "gonx: RestrictedView: nil *gonx.byValue"},
+		{decorator{(*byValue)(nil)}, "gonx: RestrictedView: gonx.decorator wraps a nil Adjacency or a nil pointer"},
 		{(*Graph)(nil), "gonx: RestrictedView: nil *gonx.Graph"},
 		{(*Digraph)(nil), "gonx: RestrictedView: nil *gonx.Digraph"},
 		{(*Restricted)(nil), "gonx: RestrictedView: nil *gonx.Restricted"},
