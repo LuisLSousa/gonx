@@ -455,9 +455,10 @@ func weightedScaleFree(tb testing.TB) *gonx.Graph {
 	return wb.Build()
 }
 
-// TestDijkstraAllocations pins the "O(n) scratch per call" clause: a heap and
-// its bookkeeping are a handful of allocations, so anything that allocates per
-// node visited or per edge relaxed fails here.
+// TestDijkstraAllocations pins the "O(n) scratch per call" clause at the two
+// allocations nodeHeap documents, its node and position arrays, so anything
+// that allocates per node visited or per edge relaxed fails here, and so does
+// a third array added to the scratch without the doc saying so.
 func TestDijkstraAllocations(t *testing.T) {
 	g := weightedScaleFree(t)
 	dist := make([]float64, g.NumNodes())
@@ -467,8 +468,8 @@ func TestDijkstraAllocations(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if allocs > 4 {
-		t.Errorf("Dijkstra allocates %v times per call, want at most 4", allocs)
+	if allocs != 2 {
+		t.Errorf("Dijkstra allocates %v times per call, want 2", allocs)
 	}
 }
 
