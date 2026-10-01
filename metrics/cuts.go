@@ -25,8 +25,10 @@ type Bridge struct {
 // number of servers, and every bridge then reports the total weight it cuts
 // off in SideWeight. It must have length g.NumNodes(). Computing the sums here
 // costs one addition per node, while computing them afterwards would take a
-// traversal per bridge. They are plain float64 sums, so a NaN weight makes
-// every SideWeight that includes it NaN, as do infinities of both signs.
+// traversal per bridge. They are plain float64 sums: a NaN weight makes every
+// SideWeight that includes it NaN, a side holding both +Inf and -Inf weights
+// sums to NaN, and one holding infinities of a single sign sums to that
+// infinity.
 //
 // The result matches networkx.bridges up to the orientation of each pair,
 // which networkx does not specify. It runs in O(n + m) time on an iterative
