@@ -107,8 +107,8 @@ func (g *Digraph) outCSR() ([]int32, []int32, []float64) {
 // Building a view takes O(k log k + d) time, where k is the number of edges
 // hidden, counting those taken out with hidden nodes, and d is the combined
 // degree of the nodes whose lists change. A view of a view is built afresh
-// from the union, so hiding edges one at a time through a
-// chain of views costs O(k²) over k steps; pass them to one call instead.
+// from the union, so hiding edges one at a time through a chain of views costs
+// O(k²) over k steps; pass them to one call instead.
 func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	var base restrictable
 	switch b := g.adjacency().(type) {

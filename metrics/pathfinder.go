@@ -40,10 +40,9 @@ type PathFinder struct {
 
 // ShortestPath is [ShortestPath] on the PathFinder's scratch: the same path
 // and length, the same ErrNegativeWeight rule, and panics in the same cases,
-// checked in the same order. The path
-// is newly allocated and stays valid after later queries. Apart from that
-// path, a query allocates nothing once the PathFinder has searched a graph at
-// least this large.
+// checked in the same order. The path is newly allocated and stays valid after
+// later queries. Apart from that path, a query allocates nothing once the
+// PathFinder has searched a graph at least this large.
 func (p *PathFinder) ShortestPath(g gonx.Adjacency, src, dst int) (path []int, length float64, err error) {
 	n := g.NumNodes()
 	if dst < 0 || dst >= n {
