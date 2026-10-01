@@ -69,6 +69,41 @@ func bruteCuts(g *gonx.Graph) ([]Bridge, []int) {
 	return bridges, points
 }
 
+// bruteSideWeights sums nodeWeight over the V side of each bridge, found by
+// deleting the bridge and collecting V's component.
+func bruteSideWeights(g *gonx.Graph, bridges []Bridge, nodeWeight []float64) []float64 {
+	out := make([]float64, len(bridges))
+	for i, br := range bridges {
+		b := g.ToBuilder()
+		b.RemoveEdge(br.U, br.V)
+		for _, c := range ConnectedComponents(b.Build()) {
+			if slices.Contains(c, br.V) {
+				for _, v := range c {
+					out[i] += nodeWeight[v]
+				}
+			}
+		}
+	}
+	return out
+}
+
+// sameWeightedBridges checks Bridges given node weights against the oracle's
+// bridges and side sums. The weights are small integers, so the sums are exact
+// in whatever order they are added.
+func sameWeightedBridges(t *testing.T, label string, g *gonx.Graph, nodeWeight []float64, want []Bridge) {
+	t.Helper()
+	got := Bridges(g, nodeWeight)
+	sums := bruteSideWeights(g, want, nodeWeight)
+	if len(got) != len(want) {
+		t.Fatalf("%s: %d weighted bridges, want %d", label, len(got), len(want))
+	}
+	for i, w := range want {
+		if b := got[i]; b.U != w.U || b.V != w.V || b.Side != w.Side || b.SideWeight != sums[i] {
+			t.Errorf("%s: weighted bridge %d = %+v, want {U:%d V:%d Side:%d SideWeight:%v}", label, i, b, w.U, w.V, w.Side, sums[i])
+		}
+	}
+}
+
 // sameBridges compares U, V and Side, and expects SideWeight to equal Side,
 // which is what Bridges reports when it is given no node weights.
 func sameBridges(t *testing.T, label string, got, want []Bridge) {
@@ -144,7 +179,7 @@ func TestCutsHandWorked(t *testing.T) {
 }
 
 func TestCutsMatchNetworkx(t *testing.T) {
-	for _, name := range []string{"ws_undirected", "er_sparse"} {
+	for _, name := range []string{"ws_undirected", "er_sparse", "ba_tree"} {
 		g := loadEdges(t, name+".edges").(*gonx.Graph)
 		raw, err := os.ReadFile(filepath.Join("testdata", name+".cuts.json"))
 		if err != nil {
@@ -181,6 +216,11 @@ func TestCutsAgainstBruteForce(t *testing.T) {
 			}
 			wantB, wantP := bruteCuts(g)
 			sameBridges(t, "random graph", Bridges(g, nil), wantB)
+			nodeWeight := make([]float64, n)
+			for v := range nodeWeight {
+				nodeWeight[v] = float64(r.IntN(1000))
+			}
+			sameWeightedBridges(t, "random graph", g, nodeWeight, wantB)
 			if got := ArticulationPoints(g); !slices.Equal(got, wantP) {
 				t.Errorf("n=%d deg=%v: ArticulationPoints = %v, want %v", n, deg, got, wantP)
 			}
@@ -246,6 +286,13 @@ func FuzzCuts(f *testing.F) {
 		g := b.Build()
 		wantB, wantP := bruteCuts(g)
 		sameBridges(t, "fuzzed graph", Bridges(g, nil), wantB)
+		// Node weights from the same bytes, read backwards so that they are
+		// not simply the edge endpoints again.
+		nodeWeight := make([]float64, n)
+		for v := range nodeWeight {
+			nodeWeight[v] = float64(data[len(data)-1-v%len(data)])
+		}
+		sameWeightedBridges(t, "fuzzed graph", g, nodeWeight, wantB)
 		if got := ArticulationPoints(g); !slices.Equal(got, wantP) {
 			t.Errorf("ArticulationPoints = %v, want %v on input %v", got, wantP, data)
 		}

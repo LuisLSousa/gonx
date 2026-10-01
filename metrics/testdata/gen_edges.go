@@ -102,6 +102,37 @@ func main() {
 		}
 		write(filepath.Join(dir, "er_sparse.edges"), "undirected 150", lines)
 	}
+
+	// Undirected and tree-like: a preferential-attachment tree on 100 nodes,
+	// where most edges are bridges and the hubs are cut nodes with many
+	// pieces, with six extra edges closing cycles, and beside it a path on
+	// nodes 100 to 119, so that bridges with large sides occur in two
+	// components. The cuts tests read it.
+	{
+		tree, err := generators.BarabasiAlbert(100, 1, gonx.NewRand(13))
+		if err != nil {
+			panic(err)
+		}
+		b := tree.ToBuilder()
+		for range 20 {
+			b.AddNode()
+		}
+		r := gonx.NewRand(14)
+		for added := 0; added < 6; {
+			if b.AddEdge(r.IntN(100), r.IntN(100)) {
+				added++
+			}
+		}
+		for u := 100; u < 119; u++ {
+			b.AddEdge(u, u+1)
+		}
+		w := &weigher{r: gonx.NewRand(15)}
+		var lines []string
+		for u, v := range b.Build().Edges() {
+			lines = append(lines, fmt.Sprintf("%d %d %.6f", u, v, w.next()))
+		}
+		write(filepath.Join(dir, "ba_tree.edges"), "undirected 120", lines)
+	}
 }
 
 func write(path, header string, lines []string) {

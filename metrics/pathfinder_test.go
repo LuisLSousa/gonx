@@ -164,7 +164,7 @@ func checkPath(t *testing.T, g gonx.Adjacency, src, dst int, path []int, length 
 func TestPathFinderMatchesNetworkx(t *testing.T) {
 	var p PathFinder
 	// The fixtures differ in size, so one PathFinder also moves between them.
-	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse", "ws_undirected"} {
+	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse", "ba_tree", "ws_undirected"} {
 		g := loadEdges(t, name+".edges")
 		for src, want := range loadExpected(t, name+".dijkstra.json") {
 			for dst, d := range want {
