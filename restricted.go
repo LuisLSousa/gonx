@@ -276,7 +276,8 @@ func underlying(g Adjacency) Adjacency {
 	// A nil pointer, to a graph, a view or a wrapper, is caught before any
 	// method runs on it. That names it exactly, and avoids a fault inside a
 	// promoted method, which Go 1.27's race detector turns from a panic into
-	// a fatal error when it unwinds through a deferred call.
+	// a fatal error when it unwinds through a deferred call
+	// (https://go.dev/issue/81959).
 	if v := reflect.ValueOf(g); v.Kind() == reflect.Pointer && v.IsNil() {
 		panic(fmt.Sprintf("gonx: RestrictedView: nil %T", g))
 	}
