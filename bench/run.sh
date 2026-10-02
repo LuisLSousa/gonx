@@ -3,23 +3,24 @@
 # Barabasi-Albert edge lists, each (library, size) pair in its own
 # process under /usr/bin/time -l so peak RSS is captured per run.
 #
-# Outputs, replaced together by a run with the default sizes and repeats
-# whose libraries agree (py/compare_checks.py):
+# Outputs, replaced together by a run of committed code with the default sizes
+# and repeats whose libraries agree (py/compare_checks.py):
 #   results/results.csv   lib,op,n,edges,repeat,seconds (+ mem rows in bytes)
 #   results/checks.txt    per-library #check lines
 #   results/env.txt       hardware, OS, toolchain, library versions
-# A run that fails, or one with SIZES or REPEATS set otherwise, such as the
-# smoke run in README.md, leaves results/ as it was and keeps its output in
-# the runs/ directory it names.
+# A run that fails, one on a tree with uncommitted changes, or one with SIZES
+# or REPEATS set otherwise, such as the smoke run in README.md, leaves results/
+# as it was and keeps its output in the runs/ directory it names.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 # The commit the numbers come from. Any other change in the tree marks it
-# dirty, since the commit alone would then not reproduce them.
+# dirty, since the commit alone would then not reproduce them, and a dirty run
+# is not published.
 GONX_REV=$(git rev-parse --short HEAD)
 if [ -n "$(git status --porcelain -- .. ':!results')" ]; then
   GONX_REV="$GONX_REV-dirty"
-  echo "warning: uncommitted changes; env.txt will record $GONX_REV" >&2
+  echo "warning: uncommitted changes, so this run will not replace results/" >&2
 fi
 
 DEFAULT_SIZES="10000 100000 1000000"
@@ -103,6 +104,10 @@ if [ "$SIZES" != "$DEFAULT_SIZES" ] || [ "$REPEATS" != "$DEFAULT_REPEATS" ]; the
   echo "SIZES or REPEATS differ from the defaults, so results/ is not replaced" >&2
   exit 0
 fi
+case "$GONX_REV" in *-dirty)
+  echo "the tree has uncommitted changes, so results/ is not replaced" >&2
+  exit 0
+esac
 # Renames within one filesystem are atomic and need no space, so only a kill
 # between them could leave results/ with old and new files mixed.
 for f in results.csv checks.txt env.txt; do

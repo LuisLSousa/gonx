@@ -13,15 +13,15 @@ SIZES="10000" REPEATS=1 ./run.sh   # quick smoke run, kept in runs/
 
 Results land in `results/`: raw timings (`results.csv`), cross-library
 answer checks (`checks.txt`), and the exact environment (`env.txt`).
-Only a full run whose libraries agree replaces them, all three together.
-A run whose answers disagree fails, and a smoke run with other sizes or
-repeats is not published; either way its output stays in the `runs/`
+Only a full run of committed code whose libraries agree replaces them,
+all three together. A run whose answers disagree fails, and a smoke run
+with other sizes or repeats, or a run on a tree with uncommitted
+changes, is not published; either way its output stays in the `runs/`
 directory it names. `py/compare_checks.py` holds the answers to gonx's
 exactly, apart from PageRank scores, which agree to a relative 1e-3, and
 gonum's top two nodes, which may swap when gonum scores them that close.
-`env.txt` marks the gonx commit `-dirty` when the tree had uncommitted
-changes, and `requirements.txt` pins the Python packages to the versions
-the committed results used.
+`requirements.txt` pins the Python packages to the versions the
+committed results used.
 
 ## What is measured
 
