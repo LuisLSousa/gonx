@@ -25,15 +25,15 @@ package gonx
 //     spare capacity, and valid for as long as the graph is. They may be held
 //     across calls, and the graph may be read from several goroutines at once.
 //
-// Adjacency is sealed: only this package's types implement it, so the method
-// set can grow with the algorithms that consume it. A later release may open it
-// to other representations once that set has settled. A type that embeds one
-// of them, or embeds an Adjacency, satisfies the interface too, and takes on
+// Adjacency is sealed: one of its methods is unexported, so only this package
+// can define a full implementation, and the method set can grow with the
+// algorithms that consume it. A later release may open it to other
+// representations once that set has settled. A type that embeds one of this
+// package's types, or an Adjacency, still satisfies the interface, and takes on
 // the contract for every method it overrides; an override of OutWeights, for
 // one, must keep HasNegativeWeight truthful, since Dijkstra relies on it to
-// reject negative weights up front. Functions that need a graph's storage
-// rather than its methods, such as [RestrictedView], read through such a
-// wrapper to the graph it holds.
+// reject negative weights up front. [RestrictedView], which builds on a graph's
+// storage rather than its methods, accepts only this package's own types.
 type Adjacency interface {
 	NumNodes() int
 	OutNeighbors(u int) []int32
@@ -41,15 +41,12 @@ type Adjacency interface {
 	Weighted() bool
 	HasNegativeWeight() bool
 
-	// adjacency seals the interface and returns the Graph, Digraph or
-	// Restricted that implements it. Through a wrapper, which inherits the
-	// method from what it embeds, that is the value wrapped.
-	adjacency() Adjacency
+	adjacency() // seals the interface to this package
 }
 
-func (g *Graph) adjacency() Adjacency      { return g }
-func (g *Digraph) adjacency() Adjacency    { return g }
-func (r *Restricted) adjacency() Adjacency { return r }
+func (*Graph) adjacency()      {}
+func (*Digraph) adjacency()    {}
+func (*Restricted) adjacency() {}
 
 var (
 	_ Adjacency = (*Graph)(nil)

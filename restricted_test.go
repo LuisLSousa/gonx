@@ -292,9 +292,15 @@ func TestRestrictedViewOfView(t *testing.T) {
 	}
 }
 
-// lying embeds a Graph and overrides every Adjacency method with wrong
-// answers, which a view of it must ignore throughout.
-type lying struct{ *Graph }
+// Wrappers of every shape, which RestrictedView must refuse: lying embeds a
+// Graph and overrides every method, decorator embeds the interface, and
+// byValue embeds a Graph by value, so that only a pointer to it is an
+// Adjacency.
+type (
+	lying     struct{ *Graph }
+	decorator struct{ Adjacency }
+	byValue   struct{ Graph }
+)
 
 func (lying) NumNodes() int            { return 0 }
 func (lying) OutNeighbors(int) []int32 { return nil }
@@ -302,79 +308,34 @@ func (lying) OutWeights(int) []float64 { return nil }
 func (lying) Weighted() bool           { return false }
 func (lying) HasNegativeWeight() bool  { return false }
 
-func TestRestrictedViewOfEmbeddedGraph(t *testing.T) {
-	b := NewBuilder(4)
-	b.AddEdgeW(0, 1, -1)
-	b.AddEdgeW(1, 2, 2)
-	b.AddEdgeW(2, 3, 3)
-	g := b.Build()
-	// Hiding {2, 1} changes the lists of 1 and 2 and leaves 0 and 3 alone, so
-	// both kinds of node are covered.
-	edges := [][2]int{{2, 1}}
-	got := RestrictedView(lying{g}, nil, edges)
-	if got.g != g {
-		t.Fatal("the view is not of the embedded graph")
+// TestRestrictedViewRefusesOtherTypes pins that RestrictedView accepts its own
+// package's types only. Any wrapper, holding a graph or nothing, is refused by
+// its type before any of its methods run, and a nil graph, view or interface
+// is named as nil, so that neither fails with a bare nil dereference.
+func TestRestrictedViewRefusesOtherTypes(t *testing.T) {
+	g := NewBuilder(3).Build()
+	unsupported := func(w Adjacency) string {
+		return fmt.Sprintf("gonx: RestrictedView: unsupported Adjacency %T; pass the *Graph, *Digraph or *Restricted it wraps", w)
 	}
-	checkView(t, g, got, nil, edges)
-}
-
-// decorator embeds the interface rather than a concrete type, so it inherits
-// none of the unexported methods a view reads storage through; a view of it
-// must still find the graph or view inside.
-type decorator struct{ Adjacency }
-
-func TestRestrictedViewOfInterfaceWrapper(t *testing.T) {
-	b := NewBuilder(4)
-	b.AddEdgeW(0, 1, -1)
-	b.AddEdgeW(1, 2, 2)
-	b.AddEdgeW(2, 3, 3)
-	g := b.Build()
-	edges := [][2]int{{2, 1}}
-	for name, w := range map[string]Adjacency{
-		"graph":                decorator{g},
-		"embedding type":       decorator{lying{g}},
-		"wrapper of a wrapper": decorator{decorator{g}},
-	} {
-		got := RestrictedView(w, nil, edges)
-		if got.g != g {
-			t.Fatalf("%s: the view is not of the wrapped graph", name)
-		}
-		checkView(t, g, got, nil, edges)
-	}
-	// A wrapped view gives the union over the same graph, as a view does.
-	got := RestrictedView(decorator{RestrictedView(g, []int{3}, nil)}, nil, edges)
-	if got.g != g {
-		t.Fatal("wrapped view: the result is not over the original graph")
-	}
-	checkView(t, g, got, []int{3}, edges)
-}
-
-// byValue embeds a Graph by value, so only a pointer to it is an Adjacency,
-// and a nil one fails inside the promoted method.
-type byValue struct{ Graph }
-
-// TestRestrictedViewNilPanics pins that a missing graph, whether a nil
-// interface, a nil pointer, to a graph or to a wrapper, or a wrapper around
-// any of those, panics with a message naming RestrictedView and the types,
-// rather than with a nil dereference.
-func TestRestrictedViewNilPanics(t *testing.T) {
 	for _, c := range []struct {
 		g    Adjacency
 		want string
 	}{
 		{nil, "gonx: RestrictedView: nil Adjacency"},
-		{decorator{}, "gonx: RestrictedView: gonx.decorator wraps a nil Adjacency or a nil pointer"},
-		{&decorator{}, "gonx: RestrictedView: *gonx.decorator wraps a nil Adjacency or a nil pointer"},
-		{decorator{decorator{}}, "gonx: RestrictedView: gonx.decorator wraps a nil Adjacency or a nil pointer"},
-		{(*decorator)(nil), "gonx: RestrictedView: nil *gonx.decorator"},
-		{(*byValue)(nil), "gonx: RestrictedView: nil *gonx.byValue"},
-		{decorator{(*byValue)(nil)}, "gonx: RestrictedView: gonx.decorator wraps a nil Adjacency or a nil pointer"},
 		{(*Graph)(nil), "gonx: RestrictedView: nil *gonx.Graph"},
 		{(*Digraph)(nil), "gonx: RestrictedView: nil *gonx.Digraph"},
 		{(*Restricted)(nil), "gonx: RestrictedView: nil *gonx.Restricted"},
-		{decorator{(*Graph)(nil)}, "gonx: RestrictedView: gonx.decorator wraps a nil *gonx.Graph"},
-		{struct{ *Graph }{nil}, "gonx: RestrictedView: struct { *gonx.Graph } wraps a nil *gonx.Graph"},
-		{decorator{(*Restricted)(nil)}, "gonx: RestrictedView: gonx.decorator wraps a nil *gonx.Restricted"},
+		{lying{g}, unsupported(lying{})},
+		{decorator{g}, unsupported(decorator{})},
+		{&decorator{g}, unsupported(&decorator{})},
+		{decorator{RestrictedView(g, nil, nil)}, unsupported(decorator{})},
+		{struct{ *Graph }{g}, unsupported(struct{ *Graph }{})},
+		{&byValue{}, unsupported(&byValue{})},
+		{decorator{}, unsupported(decorator{})},
+		{(*decorator)(nil), unsupported((*decorator)(nil))},
+		{(*byValue)(nil), unsupported((*byValue)(nil))},
+		{decorator{(*byValue)(nil)}, unsupported(decorator{})},
+		{struct{ *byValue }{nil}, unsupported(struct{ *byValue }{})},
 	} {
 		func() {
 			defer func() {

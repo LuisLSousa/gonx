@@ -2,7 +2,6 @@ package gonx
 
 import (
 	"fmt"
-	"reflect"
 	"slices"
 )
 
@@ -99,11 +98,11 @@ func (g *Digraph) outCSR() ([]int32, []int32, []float64) {
 // negative edge makes the view usable for Dijkstra.
 //
 // When g is itself a Restricted view, the result hides the union of both sets
-// over the same underlying graph. When g is a wrapper, a type that embeds a
-// Graph, a Digraph, a view or an Adjacency holding one of them, the view is of
-// the graph or view it wraps, and methods the wrapper overrides are not
-// consulted: the view reads one graph throughout, rather than the wrapper's
-// answers for some nodes and the storage beneath them for others.
+// over the same underlying graph. g must be a *Graph, a *Digraph or a
+// *Restricted, and any other Adjacency panics: a view is built from the
+// graph's storage, not its methods, so a view of a type that wraps a graph
+// would silently ignore every method the wrapper overrides. Pass the graph it
+// wraps instead.
 //
 // Building a view takes O(k log k + d) time, where k is the number of edges
 // hidden, counting those taken out with hidden nodes, and d is the combined
@@ -112,17 +111,28 @@ func (g *Digraph) outCSR() ([]int32, []int32, []float64) {
 // O(k²) over k steps; pass them to one call instead.
 func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	var base restrictable
-	switch b := underlying(g).(type) {
+	switch b := g.(type) {
 	case *Restricted:
+		if b == nil {
+			panic("gonx: RestrictedView: nil *gonx.Restricted")
+		}
 		base = b.g
 		nodes = append(slices.Clip(b.hiddenNodes), nodes...)
 		edges = append(slices.Clip(b.hiddenEdges), edges...)
-	case restrictable:
+	case *Graph:
+		if b == nil {
+			panic("gonx: RestrictedView: nil *gonx.Graph")
+		}
 		base = b
+	case *Digraph:
+		if b == nil {
+			panic("gonx: RestrictedView: nil *gonx.Digraph")
+		}
+		base = b
+	case nil:
+		panic("gonx: RestrictedView: nil Adjacency")
 	default:
-		// Unreachable: adjacency is defined on the three types above alone,
-		// and returns its receiver.
-		panic(fmt.Sprintf("gonx: RestrictedView: unsupported Adjacency %T", g))
+		panic(fmt.Sprintf("gonx: RestrictedView: unsupported Adjacency %T; pass the *Graph, *Digraph or *Restricted it wraps", g))
 	}
 	n := base.NumNodes()
 	for _, x := range nodes {
@@ -262,52 +272,6 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 
 	r.negative = base.negativeEntries() > droppedNegative
 	return r
-}
-
-// underlying returns the Graph, Digraph or Restricted that g is or wraps. When
-// there is none, because g is nil, a nil pointer, or a wrapper holding either,
-// it panics with a message naming RestrictedView and the types involved;
-// otherwise the first method call on the missing graph would fail with a bare
-// nil dereference.
-func underlying(g Adjacency) Adjacency {
-	if g == nil {
-		panic("gonx: RestrictedView: nil Adjacency")
-	}
-	// A nil pointer, to a graph, a view or a wrapper, is caught before any
-	// method runs on it. That names it exactly, and avoids a fault inside a
-	// promoted method, which Go 1.27's race detector turns from a panic into
-	// a fatal error when it unwinds through a deferred call
-	// (https://go.dev/issue/81959).
-	if v := reflect.ValueOf(g); v.Kind() == reflect.Pointer && v.IsNil() {
-		panic(fmt.Sprintf("gonx: RestrictedView: nil %T", g))
-	}
-	a := adjacencyOf(g)
-	missing := false
-	switch b := a.(type) {
-	case *Graph:
-		missing = b == nil
-	case *Digraph:
-		missing = b == nil
-	case *Restricted:
-		missing = b == nil
-	}
-	if missing {
-		panic(fmt.Sprintf("gonx: RestrictedView: %T wraps a nil %T", g, a))
-	}
-	return a
-}
-
-// adjacencyOf calls g.adjacency. On a wrapper holding a nil Adjacency, or a
-// nil pointer to another wrapper, that call panics inside the promoted method,
-// before there is a value to check, so the panic is replaced with one that
-// names the wrapper; the original stays in the trace, marked recovered.
-func adjacencyOf(g Adjacency) Adjacency {
-	defer func() {
-		if recover() != nil {
-			panic(fmt.Sprintf("gonx: RestrictedView: %T wraps a nil Adjacency or a nil pointer", g))
-		}
-	}()
-	return g.adjacency()
 }
 
 // hash maps a node to a filter bit. The multiplier (2^64 over the golden
