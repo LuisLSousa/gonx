@@ -157,8 +157,9 @@ func BreadthFirst(g gonx.Adjacency, src int, dist []int32) {
 // BFS fills dist with shortest-path distances from src on an undirected Graph,
 // as [BreadthFirst] does; dist[v] == -1 means v is unreachable from src. dist
 // must have length g.NumNodes(). Unlike BreadthFirst it does not check its
-// arguments: a src out of range panics with a runtime index error, and the
-// result is unspecified when dist has the wrong length.
+// arguments: a src out of range panics with a runtime index error, a dist
+// shorter than g.NumNodes() may panic the same way once the search reaches a
+// node past its end, and a longer one has its extra entries set to -1.
 //
 // BFS predates BreadthFirst and keeps its signature so that code holding it as
 // a function value still compiles. It also keeps its concrete-type loop, which
