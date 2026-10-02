@@ -8,8 +8,9 @@ import (
 	"github.com/LuisLSousa/gonx"
 )
 
-// ErrNegativeWeight is returned by Dijkstra and ShortestPath when the graph has
-// an edge with a negative weight, wherever it is. Dijkstra's algorithm is only
+// ErrNegativeWeight is returned by Dijkstra, ShortestPath and
+// [PathFinder.ShortestPath] when the graph has an edge with a negative weight,
+// wherever it is. Dijkstra's algorithm is only
 // correct for non-negative weights, and a negative one is almost always a data
 // error rather than an intended shortest-path problem, so the call fails
 // instead of returning distances that are silently wrong. The check reads
@@ -167,8 +168,11 @@ type nodeHeap struct {
 	pos   []int32   // pos[v] is v's index in nodes, or -1 when v is not in the heap
 }
 
-func newNodeHeap(n int, key []float64) *nodeHeap {
-	h := &nodeHeap{key: key, nodes: make([]int32, 0, n), pos: make([]int32, n)}
+// newNodeHeap returns the heap by value, so that the struct itself lives in
+// its caller's frame whether or not the call is inlined, and the two arrays
+// are the only allocations.
+func newNodeHeap(n int, key []float64) nodeHeap {
+	h := nodeHeap{key: key, nodes: make([]int32, 0, n), pos: make([]int32, n)}
 	for i := range h.pos {
 		h.pos[i] = -1
 	}

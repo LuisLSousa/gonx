@@ -55,20 +55,20 @@ type Restricted struct {
 // restrictable is what RestrictedView needs from the graph under a view,
 // beyond Adjacency: whether each edge is one-way, which nodes have an edge
 // into a given node, so that hiding the node can take it out of their lists,
-// and the out-lists' storage. Graph and Digraph implement it. A type that
-// embeds one gets these methods too, and graph returns the embedded value, so
-// that the view reads one graph throughout rather than the embedding type's
-// overrides for some nodes and the storage beneath them for others.
+// the out-lists' storage, and how many out-list entries weigh less than zero,
+// so that the view's HasNegativeWeight follows from the entries it drops.
+// Graph and Digraph implement it.
 type restrictable interface {
 	Adjacency
 	directed() bool
 	inNeighbors(u int) []int32
 	outCSR() (offsets, nbrs []int32, ws []float64)
-	graph() restrictable
+	negativeEntries() int
 }
 
-func (g *Graph) graph() restrictable                   { return g }
-func (g *Digraph) graph() restrictable                 { return g }
+func (g *Graph) negativeEntries() int   { return g.negatives }
+func (g *Digraph) negativeEntries() int { return g.negatives }
+
 func (*Graph) directed() bool                          { return false }
 func (g *Graph) inNeighbors(u int) []int32             { return g.Neighbors(u) }
 func (g *Graph) outCSR() ([]int32, []int32, []float64) { return g.offsets, g.data, g.weights }
@@ -77,9 +77,6 @@ func (g *Digraph) inNeighbors(u int) []int32           { return g.InNeighbors(u)
 func (g *Digraph) outCSR() ([]int32, []int32, []float64) {
 	return g.outOffsets, g.outData, g.outWeights
 }
-
-// restriction finds the view in an Adjacency that is one, or embeds one.
-func (r *Restricted) restriction() *Restricted { return r }
 
 // RestrictedView returns a view of g with the given nodes and edges hidden,
 // after networkx's restricted_view. Neither g nor the arguments are modified,
@@ -101,30 +98,41 @@ func (r *Restricted) restriction() *Restricted { return r }
 // negative edge makes the view usable for Dijkstra.
 //
 // When g is itself a Restricted view, the result hides the union of both sets
-// over the same underlying graph. When g is a type that embeds a Graph or a
-// Digraph, the view is of the embedded graph, and methods the embedding type
-// overrides are not consulted.
+// over the same underlying graph. g must be a *Graph, a *Digraph or a
+// *Restricted, and any other Adjacency panics: a view is built from the
+// graph's storage, not its methods, so a view of a type that wraps a graph
+// would silently ignore every method the wrapper overrides. Pass the graph it
+// wraps instead.
 //
 // Building a view takes O(k log k + d) time, where k is the number of edges
 // hidden, counting those taken out with hidden nodes, and d is the combined
-// degree of the nodes whose lists change. When g has a negative weight,
-// deciding whether one survives adds a pass over all of g's edges. A view of a
-// view is built afresh from the union, so hiding edges one at a time through a
-// chain of views costs O(k²) over k steps; pass them to one call instead.
+// degree of the nodes whose lists change. A view of a view is built afresh
+// from the union, so hiding edges one at a time through a chain of views costs
+// O(k²) over k steps; pass them to one call instead.
 func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	var base restrictable
 	switch b := g.(type) {
-	case interface{ restriction() *Restricted }:
-		r := b.restriction()
-		base = r.g
-		nodes = append(slices.Clip(r.hiddenNodes), nodes...)
-		edges = append(slices.Clip(r.hiddenEdges), edges...)
-	case restrictable:
-		base = b.graph()
+	case *Restricted:
+		if b == nil {
+			panic("gonx: RestrictedView: nil *gonx.Restricted")
+		}
+		base = b.g
+		nodes = append(slices.Clip(b.hiddenNodes), nodes...)
+		edges = append(slices.Clip(b.hiddenEdges), edges...)
+	case *Graph:
+		if b == nil {
+			panic("gonx: RestrictedView: nil *gonx.Graph")
+		}
+		base = b
+	case *Digraph:
+		if b == nil {
+			panic("gonx: RestrictedView: nil *gonx.Digraph")
+		}
+		base = b
+	case nil:
+		panic("gonx: RestrictedView: nil Adjacency")
 	default:
-		// Unreachable while Adjacency is sealed: every implementation is one
-		// of the three types above or embeds one.
-		panic(fmt.Sprintf("gonx: RestrictedView: unsupported Adjacency %T", g))
+		panic(fmt.Sprintf("gonx: RestrictedView: unsupported Adjacency %T; pass the *Graph, *Digraph or *Restricted it wraps", g))
 	}
 	n := base.NumNodes()
 	for _, x := range nodes {
@@ -165,6 +173,10 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 	cut = slices.Compact(cut)
 
 	weighted := base.Weighted()
+	// The negative entries among those the view drops, counted only when g
+	// has any: whatever g has beyond them is still visible.
+	countNegative := base.negativeEntries() > 0
+	droppedNegative := 0
 	r.offsets = []int32{0}
 	if weighted {
 		// Non-nil even if every changed list ends up empty, since a nil
@@ -189,6 +201,9 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 				drop = drop[1:]
 			}
 			if len(drop) > 0 && drop[0] == key(u, int(v)) {
+				if countNegative && ws[i] < 0 {
+					droppedNegative++
+				}
 				continue
 			}
 			r.nbrs = append(r.nbrs, v)
@@ -224,6 +239,13 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 			if len(base.OutNeighbors(u)) > 0 {
 				touch(u) // with nothing appended, an empty list
 			}
+			if countNegative {
+				for _, w := range base.OutWeights(u) {
+					if w < 0 {
+						droppedNegative++
+					}
+				}
+			}
 		} else {
 			keep(u, cut[:j])
 		}
@@ -248,14 +270,7 @@ func RestrictedView(g Adjacency, nodes []int, edges [][2]int) *Restricted {
 		}
 	}
 
-	if base.HasNegativeWeight() {
-		for u := range n {
-			if slices.ContainsFunc(r.OutWeights(u), func(w float64) bool { return w < 0 }) {
-				r.negative = true
-				break
-			}
-		}
-	}
+	r.negative = base.negativeEntries() > droppedNegative
 	return r
 }
 

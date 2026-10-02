@@ -1,6 +1,7 @@
 package gonx
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"slices"
 	"testing"
@@ -291,9 +292,15 @@ func TestRestrictedViewOfView(t *testing.T) {
 	}
 }
 
-// lying embeds a Graph and overrides every Adjacency method with wrong
-// answers, which a view of it must ignore throughout.
-type lying struct{ *Graph }
+// Wrappers of every shape, which RestrictedView must refuse: lying embeds a
+// Graph and overrides every method, decorator embeds the interface, and
+// byValue embeds a Graph by value, so that only a pointer to it is an
+// Adjacency.
+type (
+	lying     struct{ *Graph }
+	decorator struct{ Adjacency }
+	byValue   struct{ Graph }
+)
 
 func (lying) NumNodes() int            { return 0 }
 func (lying) OutNeighbors(int) []int32 { return nil }
@@ -301,20 +308,44 @@ func (lying) OutWeights(int) []float64 { return nil }
 func (lying) Weighted() bool           { return false }
 func (lying) HasNegativeWeight() bool  { return false }
 
-func TestRestrictedViewOfEmbeddedGraph(t *testing.T) {
-	b := NewBuilder(4)
-	b.AddEdgeW(0, 1, -1)
-	b.AddEdgeW(1, 2, 2)
-	b.AddEdgeW(2, 3, 3)
-	g := b.Build()
-	// Hiding {2, 1} changes the lists of 1 and 2 and leaves 0 and 3 alone, so
-	// both kinds of node are covered.
-	edges := [][2]int{{2, 1}}
-	got := RestrictedView(lying{g}, nil, edges)
-	if got.g != g {
-		t.Fatal("the view is not of the embedded graph")
+// TestRestrictedViewRefusesOtherTypes pins that RestrictedView accepts its own
+// package's types only. Any wrapper, holding a graph or nothing, is refused by
+// its type before any of its methods run, and a nil graph, view or interface
+// is named as nil, so that neither fails with a bare nil dereference.
+func TestRestrictedViewRefusesOtherTypes(t *testing.T) {
+	g := NewBuilder(3).Build()
+	unsupported := func(w Adjacency) string {
+		return fmt.Sprintf("gonx: RestrictedView: unsupported Adjacency %T; pass the *Graph, *Digraph or *Restricted it wraps", w)
 	}
-	checkView(t, g, got, nil, edges)
+	for _, c := range []struct {
+		g    Adjacency
+		want string
+	}{
+		{nil, "gonx: RestrictedView: nil Adjacency"},
+		{(*Graph)(nil), "gonx: RestrictedView: nil *gonx.Graph"},
+		{(*Digraph)(nil), "gonx: RestrictedView: nil *gonx.Digraph"},
+		{(*Restricted)(nil), "gonx: RestrictedView: nil *gonx.Restricted"},
+		{lying{g}, unsupported(lying{})},
+		{decorator{g}, unsupported(decorator{})},
+		{&decorator{g}, unsupported(&decorator{})},
+		{decorator{RestrictedView(g, nil, nil)}, unsupported(decorator{})},
+		{struct{ *Graph }{g}, unsupported(struct{ *Graph }{})},
+		{&byValue{}, unsupported(&byValue{})},
+		{decorator{}, unsupported(decorator{})},
+		{(*decorator)(nil), unsupported((*decorator)(nil))},
+		{(*byValue)(nil), unsupported((*byValue)(nil))},
+		{decorator{(*byValue)(nil)}, unsupported(decorator{})},
+		{struct{ *byValue }{nil}, unsupported(struct{ *byValue }{})},
+	} {
+		func() {
+			defer func() {
+				if got := fmt.Sprint(recover()); got != c.want {
+					t.Errorf("RestrictedView(%#v) panics with %q, want %q", c.g, got, c.want)
+				}
+			}()
+			RestrictedView(c.g, nil, nil)
+		}()
+	}
 }
 
 func TestRestrictedViewPanics(t *testing.T) {
@@ -399,4 +430,29 @@ func FuzzRestrictedView(f *testing.F) {
 		}
 		checkView(t, g, RestrictedView(g, nodes, edges), nodes, edges)
 	})
+}
+
+// BenchmarkRestrictedViewNegative builds a view that hides one edge of a
+// 100k-node path, with and without a negative weight between its last nodes,
+// so that a cost which grows with the whole graph rather than with the lists
+// the view changes, such as a scan for a surviving negative weight, shows up
+// as a gap between the two.
+func BenchmarkRestrictedViewNegative(b *testing.B) {
+	for _, negative := range []bool{false, true} {
+		const n = 100_000
+		g := NewWeightedBuilder(n)
+		for u := range n - 1 {
+			g.AddEdgeW(u, u+1, 1)
+		}
+		if negative {
+			g.AddEdgeW(n-3, n-1, -1)
+		}
+		graph := g.Build()
+		b.Run(map[bool]string{false: "nonnegative", true: "negative"}[negative], func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = RestrictedView(graph, nil, [][2]int{{10, 11}})
+			}
+		})
+	}
 }

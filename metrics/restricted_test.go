@@ -14,7 +14,7 @@ import (
 )
 
 func TestRestrictedViewMatchesNetworkx(t *testing.T) {
-	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse"} {
+	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse", "ba_tree"} {
 		t.Run(name, func(t *testing.T) {
 			g := loadEdges(t, name+".edges")
 			raw, err := os.ReadFile(filepath.Join("testdata", name+".restricted.json"))
@@ -89,7 +89,7 @@ func withoutEdge(g gonx.Adjacency, u, v int) gonx.Adjacency {
 // exists for: the shortest way from u to v when the edge between them is gone.
 // It must match a graph rebuilt without the edge, and never use the edge.
 func TestShortestPathAroundAnEdge(t *testing.T) {
-	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse"} {
+	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse", "ba_tree"} {
 		g := loadEdges(t, name+".edges")
 		for u := 0; u < g.NumNodes(); u += 5 {
 			for _, v32 := range g.OutNeighbors(u) {

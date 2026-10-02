@@ -1,0 +1,5 @@
+# The versions the committed results were measured with (see results/env.txt).
+networkx==3.6.1
+python-igraph==1.0.0
+scipy==1.18.0
+numpy==2.5.2

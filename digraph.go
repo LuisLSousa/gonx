@@ -77,19 +77,29 @@ func (b *DigraphBuilder) AddNode() int {
 	return len(b.out) - 1
 }
 
-// HasEdge reports whether the directed edge u->v exists. O(outdeg(u)).
+// HasEdge reports whether the directed edge u->v exists: O(1) when v has no
+// in-edges, and otherwise O(outdeg(u)).
 func (b *DigraphBuilder) HasEdge(u, v int) bool {
 	if u < 0 || u >= len(b.out) || v < 0 || v >= len(b.out) {
 		return false
 	}
-	vv := int32(v)
-	return slices.Contains(b.out[u], vv)
+	// The builder counts in-edges but does not list them, so a target with
+	// none is the one case it can rule out without scanning u's list. It is
+	// the case of a node's edges going out to new targets one at a time,
+	// which would otherwise rescan the growing list for every edge.
+	if b.inDegrees[v] == 0 {
+		return false
+	}
+	return slices.Contains(b.out[u], int32(v))
 }
 
 // AddEdge inserts the directed edge u->v. It returns false (and does nothing)
 // for self-loops, out-of-range endpoints, or edges that already exist, so the
 // resulting graph is always simple. Inserting v->u afterwards is a distinct
-// edge and succeeds.
+// edge and succeeds. The duplicate check is [DigraphBuilder.HasEdge], so adding
+// many edges out of one node to targets that already have in-edges costs time
+// quadratic in that node's out-degree; [DigraphBuilder.AddEdgeUnchecked]
+// skips the check when the input is known to be simple.
 func (b *DigraphBuilder) AddEdge(u, v int) bool {
 	n := len(b.out)
 	if u == v || u < 0 || v < 0 || u >= n || v >= n {
@@ -201,7 +211,7 @@ func (b *DigraphBuilder) Build() *Digraph {
 	outOffsets[n] = off
 	outData := make([]int32, b.m)
 	var outWeights []float64
-	negative := false
+	negatives := 0
 	if b.w == nil {
 		for u := range n {
 			row := outData[outOffsets[u]:outOffsets[u+1]]
@@ -219,9 +229,7 @@ func (b *DigraphBuilder) Build() *Digraph {
 		for u := range n {
 			lo, hi := outOffsets[u], outOffsets[u+1]
 			ws := denseWeights(b.w[u], row[:len(b.out[u])])
-			if copySorted(b.out[u], ws, outData[lo:hi], outWeights[lo:hi], keys) {
-				negative = true
-			}
+			negatives += copySorted(b.out[u], ws, outData[lo:hi], outWeights[lo:hi], keys)
 		}
 	}
 
@@ -260,7 +268,7 @@ func (b *DigraphBuilder) Build() *Digraph {
 	return &Digraph{
 		outOffsets: outOffsets, outData: outData, outWeights: outWeights,
 		inOffsets: inOffsets, inData: inData, inWeights: inWeights,
-		negative: negative, m: b.m,
+		negatives: negatives, m: b.m,
 	}
 }
 
@@ -288,7 +296,7 @@ type Digraph struct {
 	inOffsets  []int32   // length n+1
 	inData     []int32   // length m; concatenated sorted in-neighbor lists
 	inWeights  []float64 // length m, aligned with inData; nil when unweighted
-	negative   bool      // some weight is below zero
+	negatives  int       // entries of outWeights below zero; see Graph.negatives
 	m          int
 }
 
@@ -396,7 +404,7 @@ func (g *Digraph) Weighted() bool { return g.outWeights != nil }
 // HasNegativeWeight reports whether any edge weighs less than zero. It is
 // always false on an unweighted graph. Build records the answer, so the call is
 // O(1); algorithms that need non-negative weights check it once up front.
-func (g *Digraph) HasNegativeWeight() bool { return g.negative }
+func (g *Digraph) HasNegativeWeight() bool { return g.negatives > 0 }
 
 // OutWeights returns the weights of u's outgoing edges, aligned index for index
 // with [Digraph.OutNeighbors]. The slice is zero-copy and MUST NOT be modified.

@@ -163,7 +163,7 @@ func checkTree(t *testing.T, g gonx.Adjacency, src int, dist []float64, prev []i
 }
 
 func TestDijkstraMatchesNetworkx(t *testing.T) {
-	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse"} {
+	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse", "ba_tree"} {
 		t.Run(name, func(t *testing.T) {
 			g := loadEdges(t, name+".edges")
 			want := loadExpected(t, name+".dijkstra.json")
@@ -455,9 +455,10 @@ func weightedScaleFree(tb testing.TB) *gonx.Graph {
 	return wb.Build()
 }
 
-// TestDijkstraAllocations pins the "O(n) scratch per call" clause: a heap and
-// its bookkeeping are a handful of allocations, so anything that allocates per
-// node visited or per edge relaxed fails here.
+// TestDijkstraAllocations pins the "O(n) scratch per call" clause at the two
+// allocations nodeHeap documents, its node and position arrays, so anything
+// that allocates per node visited or per edge relaxed fails here, and so does
+// a third array added to the scratch without the doc saying so.
 func TestDijkstraAllocations(t *testing.T) {
 	g := weightedScaleFree(t)
 	dist := make([]float64, g.NumNodes())
@@ -467,8 +468,8 @@ func TestDijkstraAllocations(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if allocs > 4 {
-		t.Errorf("Dijkstra allocates %v times per call, want at most 4", allocs)
+	if allocs != 2 {
+		t.Errorf("Dijkstra allocates %v times per call, want 2", allocs)
 	}
 }
 
@@ -542,7 +543,7 @@ func TestShortestPath(t *testing.T) {
 // the fixtures: same length, a path that starts and ends where it should, and
 // edges whose weights add up to that length.
 func TestShortestPathMatchesDijkstra(t *testing.T) {
-	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse"} {
+	for _, name := range []string{"ws_undirected", "er_directed", "er_sparse", "ba_tree"} {
 		g := loadEdges(t, name+".edges")
 		n := g.NumNodes()
 		dist := make([]float64, n)
